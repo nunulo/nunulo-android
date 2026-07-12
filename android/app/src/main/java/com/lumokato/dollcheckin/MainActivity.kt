@@ -45,6 +45,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
@@ -177,6 +178,16 @@ private data class CheckinItem(
     val visibility: String,
     val thumbUrl: String?,
     val displayUrl: String?,
+    val originalUrl: String?,
+)
+
+private data class CheckinEditDraft(
+    val placeName: String,
+    val latitude: String,
+    val longitude: String,
+    val note: String,
+    val tags: String,
+    val visibility: String,
 )
 
 private data class MessageItem(
@@ -432,6 +443,29 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         executeJson(request).optBoolean("deleted", false)
     }
 
+    suspend fun getCheckin(apiBase: String, token: String, checkinId: String): CheckinItem = withContext(Dispatchers.IO) {
+        val request = authorizedBuilder(apiBase, "/api/checkins/$checkinId", token).get().build()
+        parseCheckin(executeJson(request))
+    }
+
+    suspend fun updateCheckin(apiBase: String, token: String, record: CheckinItem, draft: CheckinEditDraft): CheckinItem = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("place_name", draft.placeName.trim())
+            .put("latitude", draft.latitude.toDouble())
+            .put("longitude", draft.longitude.toDouble())
+            .put("taken_at", record.takenAt)
+            .put("note", draft.note.trim())
+            .put("tags", draft.tags.trim())
+            .put("source", record.source.ifBlank { "android_capture" })
+            .put("visibility", draft.visibility)
+            .put("location_source", "manual")
+            .toString()
+        val request = authorizedBuilder(apiBase, "/api/checkins/${record.id}", token)
+            .patch(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        parseCheckin(executeJson(request))
+    }
+
     suspend fun uploadAvatar(context: Context, apiBase: String, token: String, uri: Uri): AuthUser = withContext(Dispatchers.IO) {
         val photoBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw IllegalArgumentException("无法读取头像图片")
@@ -503,6 +537,8 @@ private fun DollCheckinApp() {
     var avatarUri by remember { mutableStateOf<Uri?>(null) }
     var filters by remember { mutableStateOf(BrowseFilters()) }
     var pendingDeleteId by rememberSaveable { mutableStateOf("") }
+    var selectedRecord by remember { mutableStateOf<CheckinItem?>(null) }
+    var editingRecord by remember { mutableStateOf<CheckinItem?>(null) }
     var uploadPhase by rememberSaveable { mutableStateOf("idle") }
     var message by rememberSaveable { mutableStateOf("准备记录今天的娃娃出行") }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -751,6 +787,31 @@ private fun DollCheckinApp() {
         }
     }
 
+    fun openRecord(record: CheckinItem) {
+        selectedRecord = record
+        scope.launch {
+            selectedRecord = runCatching { runWithTokenRefresh { token -> api.getCheckin(apiBase, token, record.id) } }.getOrDefault(record)
+        }
+    }
+
+    fun saveRecord(record: CheckinItem, edit: CheckinEditDraft) {
+        busy = true
+        scope.launch {
+            try {
+                val updated = runWithTokenRefresh { token -> api.updateCheckin(apiBase, token, record, edit) }
+                records = records.map { if (it.id == updated.id) updated else it }
+                selectedRecord = updated
+                editingRecord = null
+                refreshLibraryState()
+                message = "记录已更新"
+            } catch (error: Exception) {
+                message = error.message ?: "更新失败"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (accessToken.isNotBlank()) refreshProfileAndRecords()
     }
@@ -787,12 +848,14 @@ private fun DollCheckinApp() {
                             onFiltersChange = { filters = it },
                             onPublish = { activeTab = AppTab.Publish.name },
                             onDelete = { deleteRecord(it) },
+                            onOpen = { openRecord(it) },
                         )
                         AppTab.Map -> MapScreen(
                             records = filterRecords(records, filters),
                             personalMapCells = personalMapCells,
                             worldMapCells = worldMapCells,
                             onPublish = { activeTab = AppTab.Publish.name },
+                            onOpen = { openRecord(it) },
                         )
                         AppTab.Publish -> PublishScreen(
                             draft = draft,
@@ -830,11 +893,41 @@ private fun DollCheckinApp() {
                             onPermissions = { requestCorePermissions() },
                             onPickAvatar = { avatarPickerLauncher.launch("image/*") },
                             onRefresh = { refreshProfileAndRecords() },
+                            onOpenRecord = { openRecord(it) },
+                            onOpenPhotos = { filters = BrowseFilters(); activeTab = AppTab.Feed.name },
+                            onOpenPlaces = { activeTab = AppTab.Map.name },
+                            onOpenTags = { filters = filters.copy(tag = rankedTags(records).firstOrNull()?.first.orEmpty()); activeTab = AppTab.Feed.name },
                             message = message,
                         )
                     }
                 }
             }
+        }
+        selectedRecord?.let { record ->
+            CheckinDetailDialog(
+                record = record,
+                apiBase = apiBase,
+                api = api,
+                busy = busy,
+                onDismiss = { selectedRecord = null; pendingDeleteId = "" },
+                onEdit = { editingRecord = record },
+                onDelete = {
+                    if (pendingDeleteId == record.id) {
+                        deleteRecord(record)
+                        selectedRecord = null
+                    } else pendingDeleteId = record.id
+                },
+                pendingDelete = pendingDeleteId == record.id,
+            )
+        }
+        editingRecord?.let { record ->
+            CheckinEditDialog(
+                record = record,
+                tagGroups = tagCatalog.groups.ifEmpty { FALLBACK_TAG_GROUPS },
+                busy = busy,
+                onDismiss = { editingRecord = null },
+                onSave = { saveRecord(record, it) },
+            )
         }
     }
 }
@@ -962,7 +1055,7 @@ private fun StitchChip(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun FeedScreen(
     records: List<CheckinItem>, allRecords: List<CheckinItem>, filters: BrowseFilters,
     apiBase: String, api: DollApi, pendingDeleteId: String,
-    onFiltersChange: (BrowseFilters) -> Unit, onPublish: () -> Unit, onDelete: (CheckinItem) -> Unit,
+    onFiltersChange: (BrowseFilters) -> Unit, onPublish: () -> Unit, onDelete: (CheckinItem) -> Unit, onOpen: (CheckinItem) -> Unit,
 ) {
     var feedMode by rememberSaveable { mutableStateOf("发现") }
     val visible = when (feedMode) {
@@ -996,7 +1089,7 @@ private fun FeedScreen(
         items(rows, key = { it.joinToString("|") { record -> record.id } }) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 row.forEach { record ->
-                    Box(Modifier.weight(1f)) {
+                    Box(Modifier.weight(1f).clickable { onOpen(record) }) {
                         RemoteImage(url = record.displayUrl ?: record.thumbUrl, apiBase = apiBase, api = api, aspect = 0.82f)
                         Surface(modifier = Modifier.align(Alignment.BottomStart).padding(6.dp), color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(4.dp)) {
                             Text(record.tags.firstOrNull()?.let { "#$it" } ?: record.placeName, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), maxLines = 1)
@@ -1011,7 +1104,7 @@ private fun FeedScreen(
 }
 
 @Composable
-private fun MapScreen(records: List<CheckinItem>, personalMapCells: List<MapCellItem>, worldMapCells: List<MapCellItem>, onPublish: () -> Unit) {
+private fun MapScreen(records: List<CheckinItem>, personalMapCells: List<MapCellItem>, worldMapCells: List<MapCellItem>, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
     var scope by rememberSaveable { mutableStateOf("世界地图") }
     var filter by rememberSaveable { mutableStateOf("全部") }
     val visible = when (filter) {
@@ -1020,7 +1113,7 @@ private fun MapScreen(records: List<CheckinItem>, personalMapCells: List<MapCell
         else -> records
     }
     Box(Modifier.fillMaxSize()) {
-        AmapNativeMap(records = visible, world = scope == "世界地图", modifier = Modifier.fillMaxSize())
+        AmapNativeMap(records = visible, world = scope == "世界地图", modifier = Modifier.fillMaxSize(), onOpen = onOpen)
         Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(color = Color.White.copy(alpha = 0.96f), shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, DollUi.Hairline)) {
                 Row(Modifier.height(42.dp)) {
@@ -1292,7 +1385,7 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: DollApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, message: String) {
+private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: DollApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, message: String) {
     val places = records.map { it.placeName }.filter { it.isNotBlank() }.distinct().size
     val tags = records.flatMap { it.tags }.distinct().size
     if (user == null) {
@@ -1316,24 +1409,24 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
                 Text(user.username ?: "记录和收藏我的娃娃足迹", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = onPickAvatar) { Text("编辑资料") }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    ProfileStat("照片", records.size.toString(), Modifier.weight(1f))
-                    ProfileStat("地点", places.toString(), Modifier.weight(1f))
-                    ProfileStat("标签", tags.toString(), Modifier.weight(1f))
+                    ProfileStat("照片", records.size.toString(), Modifier.weight(1f).clickable(onClick = onOpenPhotos))
+                    ProfileStat("地点", places.toString(), Modifier.weight(1f).clickable(onClick = onOpenPlaces))
+                    ProfileStat("标签", tags.toString(), Modifier.weight(1f).clickable(onClick = onOpenTags))
                 }
             }
         }
         item {
             Column(Modifier.fillMaxWidth()) {
-                ProfileMenuRow("个人地图", places.toString())
-                ProfileMenuRow("我的相册", records.size.toString())
-                ProfileMenuRow("标签收藏", tags.toString())
+                ProfileMenuRow("个人地图", places.toString(), onOpenPlaces)
+                ProfileMenuRow("我的照片", records.size.toString(), onOpenPhotos)
+                ProfileMenuRow("标签浏览", tags.toString(), onOpenTags)
             }
         }
         item {
             Text("最近记录", modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp), fontWeight = FontWeight.Bold)
             records.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    row.forEach { record -> Box(Modifier.weight(1f)) { RemoteImage(record.thumbUrl ?: record.displayUrl, apiBase, api, aspect = 1f) } }
+                    row.forEach { record -> Box(Modifier.weight(1f).clickable { onOpenRecord(record) }) { RemoteImage(record.thumbUrl ?: record.displayUrl, apiBase, api, aspect = 1f) } }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
                 Spacer(Modifier.height(2.dp))
@@ -1344,8 +1437,8 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
 }
 
 @Composable
-private fun ProfileMenuRow(title: String, value: String) {
-    Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun ProfileMenuRow(title: String, value: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onClick).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, modifier = Modifier.weight(1f))
         Text(value, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
     }
@@ -1598,6 +1691,7 @@ private fun MapPreview(title: String, subtitle: String, records: List<CheckinIte
                 records = records,
                 world = world,
                 modifier = Modifier.fillMaxWidth().height(if (world) 210.dp else 240.dp),
+                onOpen = {},
             )
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -1611,11 +1705,11 @@ private fun MapPreview(title: String, subtitle: String, records: List<CheckinIte
 }
 
 @Composable
-private fun AmapNativeMap(records: List<CheckinItem>, world: Boolean, modifier: Modifier = Modifier) {
+private fun AmapNativeMap(records: List<CheckinItem>, world: Boolean, modifier: Modifier = Modifier, onOpen: (CheckinItem) -> Unit) {
     val mapRecords = remember(records) { records.filter { it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 && !(it.latitude == 0.0 && it.longitude == 0.0) } }
     val hasAmapConfig = BuildConfig.AMAP_ANDROID_KEY.isNotBlank()
     if (!hasAmapConfig) {
-        StaticMapFallback(records = mapRecords, world = world, modifier = modifier, reason = "地图配置待接入")
+        StaticMapFallback(records = mapRecords, world = world, modifier = modifier, reason = "地图配置待接入", onOpen = onOpen)
         return
     }
 
@@ -1641,19 +1735,19 @@ private fun AmapNativeMap(records: List<CheckinItem>, world: Boolean, modifier: 
         }
     }
     LaunchedEffect(mapView, mapRecords, world) {
-        configureAmap(mapView.map, mapRecords, world)
+        configureAmap(mapView.map, mapRecords, world, onOpen)
     }
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(DollUi.Placeholder)) {
         AndroidView(
             factory = { mapView },
-            update = { view -> configureAmap(view.map, mapRecords, world) },
+            update = { view -> configureAmap(view.map, mapRecords, world, onOpen) },
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
 
 @Composable
-private fun StaticMapFallback(records: List<CheckinItem>, world: Boolean, modifier: Modifier, reason: String) {
+private fun StaticMapFallback(records: List<CheckinItem>, world: Boolean, modifier: Modifier, reason: String, onOpen: (CheckinItem) -> Unit) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
@@ -1685,7 +1779,7 @@ private fun StaticMapFallback(records: List<CheckinItem>, world: Boolean, modifi
     }
 }
 
-private fun configureAmap(amap: AMap, records: List<CheckinItem>, world: Boolean) {
+private fun configureAmap(amap: AMap, records: List<CheckinItem>, world: Boolean, onOpen: (CheckinItem) -> Unit) {
     amap.uiSettings.isZoomControlsEnabled = false
     amap.uiSettings.isScaleControlsEnabled = true
     amap.uiSettings.isCompassEnabled = false
@@ -1695,14 +1789,17 @@ private fun configureAmap(amap: AMap, records: List<CheckinItem>, world: Boolean
         val point = toAmapPoint(record.latitude, record.longitude)
         record to LatLng(point.latitude, point.longitude)
     }
+    val markerRecords = mutableMapOf<String, CheckinItem>()
     points.forEach { (record, point) ->
-        amap.addMarker(
+        val marker = amap.addMarker(
             MarkerOptions()
                 .position(point)
                 .title(record.placeName.ifBlank { "未命名地点" })
                 .snippet(shortDate(record.takenAt ?: record.createdAt)),
         )
+        markerRecords[marker.id] = record
     }
+    amap.setOnMarkerClickListener { marker -> markerRecords[marker.id]?.let(onOpen); true }
     if (points.isEmpty()) {
         val fallback = if (world) LatLng(35.8617, 104.1954) else LatLng(31.2304, 121.4737)
         amap.moveCamera(CameraUpdateFactory.newLatLngZoom(fallback, if (world) 3f else 11f))
@@ -1742,6 +1839,98 @@ private fun CheckinCard(
             }
         }
     }
+}
+
+@Composable
+private fun CheckinDetailDialog(
+    record: CheckinItem,
+    apiBase: String,
+    api: DollApi,
+    busy: Boolean,
+    pendingDelete: Boolean,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(record.placeName.ifBlank { "未命名地点" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item { RemoteImage(record.originalUrl ?: record.displayUrl ?: record.thumbUrl, apiBase, api, aspect = 0.82f) }
+                item { Text("${shortDate(record.takenAt ?: record.createdAt)} · ${visibilityLabel(record.visibility)}", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall) }
+                if (record.note.isNotBlank()) item { Text(record.note, color = DollUi.Ink) }
+                if (record.tags.isNotEmpty()) item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(record.tags) { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
+                    }
+                }
+                item { Text(formatCoordinate(record.latitude, record.longitude), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onEdit, enabled = !busy) { Text("编辑") } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDelete, enabled = !busy) { Text(if (pendingDelete) "确认删除" else "删除", color = DollUi.Danger) }
+                TextButton(onClick = onDismiss) { Text("关闭") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun CheckinEditDialog(record: CheckinItem, tagGroups: List<TagGroupItem>, busy: Boolean, onDismiss: () -> Unit, onSave: (CheckinEditDraft) -> Unit) {
+    var placeName by rememberSaveable(record.id) { mutableStateOf(record.placeName) }
+    var latitude by rememberSaveable(record.id) { mutableStateOf(record.latitude.toString()) }
+    var longitude by rememberSaveable(record.id) { mutableStateOf(record.longitude.toString()) }
+    var note by rememberSaveable(record.id) { mutableStateOf(record.note) }
+    var selectedTags by remember(record.id) { mutableStateOf(record.tags) }
+    var visibility by rememberSaveable(record.id) { mutableStateOf(record.visibility) }
+    val latitudeValue = latitude.toDoubleOrNull()
+    val longitudeValue = longitude.toDoubleOrNull()
+    val valid = placeName.isNotBlank() && latitudeValue != null && latitudeValue in -90.0..90.0 && longitudeValue != null && longitudeValue in -180.0..180.0
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑记录") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { OutlinedTextField(placeName, { placeName = it }, label = { Text("地点") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(latitude, { latitude = it }, label = { Text("纬度") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                        OutlinedTextField(longitude, { longitude = it }, label = { Text("经度") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                    }
+                }
+                item { OutlinedTextField(note, { note = it }, label = { Text("备注") }, minLines = 2, modifier = Modifier.fillMaxWidth()) }
+                tagGroups.forEach { group ->
+                    item {
+                        Text(group.title, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(group.tags) { tag ->
+                                StitchChip(tag.name, tag.name in selectedTags) {
+                                    selectedTags = if (tag.name in selectedTags) selectedTags - tag.name else selectedTags + tag.name
+                                }
+                            }
+                        }
+                    }
+                }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(listOf("private" to "私密", "friends" to "关注", "public" to "公开")) { option ->
+                            StitchChip(option.second, visibility == option.first) { visibility = option.first }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = valid && !busy,
+                onClick = { onSave(CheckinEditDraft(placeName, latitude, longitude, note, selectedTags.joinToString(","), visibility)) },
+            ) { Text(if (busy) "保存中" else "保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 @Composable
@@ -2007,6 +2196,17 @@ private fun parseLibrarySummary(json: JSONObject): LibrarySummary {
 }
 
 private fun parseCheckin(json: JSONObject): CheckinItem {
+    val assets = json.optJSONArray("assets")
+    var originalUrl: String? = null
+    if (assets != null) {
+        for (index in 0 until assets.length()) {
+            val asset = assets.optJSONObject(index) ?: continue
+            if (asset.optString("variant") == "original") {
+                originalUrl = asset.nullableString("url") ?: asset.nullableString("signed_url")
+                break
+            }
+        }
+    }
     return CheckinItem(
         id = json.getString("id"),
         placeName = json.optString("place_name", json.optJSONObject("place")?.optString("name") ?: "未命名地点"),
@@ -2020,6 +2220,7 @@ private fun parseCheckin(json: JSONObject): CheckinItem {
         visibility = json.optString("visibility", "private"),
         thumbUrl = json.nullableString("thumb_url"),
         displayUrl = json.nullableString("display_url"),
+        originalUrl = originalUrl,
     )
 }
 
