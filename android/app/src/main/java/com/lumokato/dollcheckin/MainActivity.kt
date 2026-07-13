@@ -190,6 +190,9 @@ private data class CheckinEditDraft(
     val visibility: String,
 )
 
+private data class InteractionState(val liked: Boolean = false, val likeCount: Int = 0, val commentCount: Int = 0)
+private data class CommentItem(val id: String, val displayName: String, val body: String, val createdAt: String?)
+
 private data class MessageItem(
     val id: String,
     val kind: String,
@@ -376,11 +379,15 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
     }
 
     suspend fun listMessages(apiBase: String, token: String): List<MessageItem> = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/messages?limit=20", token).get().build()
+        val request = authorizedBuilder(apiBase, "/api/notifications?limit=50", token).get().build()
         val items = executeJson(request).getJSONArray("items")
         buildList {
             for (index in 0 until items.length()) add(parseMessage(items.getJSONObject(index)))
         }
+    }
+
+    suspend fun markAllNotificationsRead(apiBase: String, token: String) = withContext(Dispatchers.IO) {
+        executeJson(authorizedBuilder(apiBase, "/api/notifications/read-all", token).post(ByteArray(0).toRequestBody()).build())
     }
 
     suspend fun tagCatalog(apiBase: String, token: String): TagCatalog = withContext(Dispatchers.IO) {
@@ -466,6 +473,28 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         parseCheckin(executeJson(request))
     }
 
+    suspend fun interactions(apiBase: String, token: String, checkinId: String): InteractionState = withContext(Dispatchers.IO) {
+        val json = executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/interactions", token).get().build())
+        InteractionState(json.optBoolean("liked"), json.optInt("like_count"), json.optInt("comment_count"))
+    }
+
+    suspend fun setLike(apiBase: String, token: String, checkinId: String, liked: Boolean): InteractionState = withContext(Dispatchers.IO) {
+        val builder = authorizedBuilder(apiBase, "/api/checkins/$checkinId/like", token)
+        val json = executeJson(if (liked) builder.post(ByteArray(0).toRequestBody()).build() else builder.delete().build())
+        InteractionState(json.optBoolean("liked"), json.optInt("like_count"))
+    }
+
+    suspend fun comments(apiBase: String, token: String, checkinId: String): List<CommentItem> = withContext(Dispatchers.IO) {
+        val items = executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/comments", token).get().build()).getJSONArray("items")
+        buildList { for (index in 0 until items.length()) { val item = items.getJSONObject(index); add(CommentItem(item.getString("id"), item.optString("display_name", "用户"), item.optString("body"), item.nullableString("created_at"))) } }
+    }
+
+    suspend fun addComment(apiBase: String, token: String, checkinId: String, body: String): CommentItem = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("body", body).toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val item = executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/comments", token).post(payload).build())
+        CommentItem(item.getString("id"), item.optString("display_name", "我"), item.optString("body"), item.nullableString("created_at"))
+    }
+
     suspend fun uploadAvatar(context: Context, apiBase: String, token: String, uri: Uri): AuthUser = withContext(Dispatchers.IO) {
         val photoBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw IllegalArgumentException("无法读取头像图片")
@@ -539,6 +568,8 @@ private fun DollCheckinApp() {
     var pendingDeleteId by rememberSaveable { mutableStateOf("") }
     var selectedRecord by remember { mutableStateOf<CheckinItem?>(null) }
     var editingRecord by remember { mutableStateOf<CheckinItem?>(null) }
+    var interaction by remember { mutableStateOf(InteractionState()) }
+    var comments by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
     var uploadPhase by rememberSaveable { mutableStateOf("idle") }
     var message by rememberSaveable { mutableStateOf("准备记录今天的娃娃出行") }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -791,6 +822,8 @@ private fun DollCheckinApp() {
         selectedRecord = record
         scope.launch {
             selectedRecord = runCatching { runWithTokenRefresh { token -> api.getCheckin(apiBase, token, record.id) } }.getOrDefault(record)
+            interaction = runCatching { runWithTokenRefresh { token -> api.interactions(apiBase, token, record.id) } }.getOrDefault(InteractionState())
+            comments = runCatching { runWithTokenRefresh { token -> api.comments(apiBase, token, record.id) } }.getOrDefault(emptyList())
         }
     }
 
@@ -876,6 +909,7 @@ private fun DollCheckinApp() {
                             personalMapCells = personalMapCells,
                             worldMapCells = worldMapCells,
                             onOpenPublish = { activeTab = AppTab.Publish.name },
+                            onReadAll = { scope.launch { runWithTokenRefresh { token -> api.markAllNotificationsRead(apiBase, token) }; messages = runWithTokenRefresh { token -> api.listMessages(apiBase, token) } } },
                         )
                         AppTab.Me -> MeScreen(
                             apiBase = apiBase,
@@ -918,6 +952,10 @@ private fun DollCheckinApp() {
                     } else pendingDeleteId = record.id
                 },
                 pendingDelete = pendingDeleteId == record.id,
+                interaction = interaction,
+                comments = comments,
+                onToggleLike = { scope.launch { interaction = runWithTokenRefresh { token -> api.setLike(apiBase, token, record.id, !interaction.liked) }.copy(commentCount = comments.size) } },
+                onComment = { body -> scope.launch { val added = runWithTokenRefresh { token -> api.addComment(apiBase, token, record.id, body) }; comments = comments + added; interaction = interaction.copy(commentCount = comments.size) } },
             )
         }
         editingRecord?.let { record ->
@@ -1263,13 +1301,13 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
 }
 
 @Composable
-private fun LibraryScreen(messages: List<MessageItem>, records: List<CheckinItem>, albums: List<AlbumItem>, summary: LibrarySummary, personalMapCells: List<MapCellItem>, worldMapCells: List<MapCellItem>, onOpenPublish: () -> Unit) {
+private fun LibraryScreen(messages: List<MessageItem>, records: List<CheckinItem>, albums: List<AlbumItem>, summary: LibrarySummary, personalMapCells: List<MapCellItem>, worldMapCells: List<MapCellItem>, onOpenPublish: () -> Unit, onReadAll: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("全部") }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         stickyHeader {
             Surface(color = DollUi.Surface, modifier = Modifier.fillMaxWidth(), border = BorderStroke(0.5.dp, DollUi.Hairline)) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("消息", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("消息", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); TextButton(onClick = onReadAll) { Text("全部已读") } }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(listOf("全部", "互动", "关注", "系统")) { item -> StitchChip(item, mode == item) { mode = item } }
                     }
@@ -1848,10 +1886,15 @@ private fun CheckinDetailDialog(
     api: DollApi,
     busy: Boolean,
     pendingDelete: Boolean,
+    interaction: InteractionState,
+    comments: List<CommentItem>,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onToggleLike: () -> Unit,
+    onComment: (String) -> Unit,
 ) {
+    var commentText by rememberSaveable(record.id) { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(record.placeName.ifBlank { "未命名地点" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -1866,6 +1909,25 @@ private fun CheckinDetailDialog(
                     }
                 }
                 item { Text(formatCoordinate(record.latitude, record.longitude), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall) }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StitchChip(if (interaction.liked) "已喜欢 ${interaction.likeCount}" else "喜欢 ${interaction.likeCount}", interaction.liked, onToggleLike)
+                        Text("${interaction.commentCount} 条评论", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                items(comments, key = { it.id }) { comment ->
+                    Column(Modifier.fillMaxWidth().background(DollUi.PaperTint).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(comment.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                        Text(comment.body, color = DollUi.Ink)
+                        Text(shortDate(comment.createdAt), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(commentText, { commentText = it }, placeholder = { Text("写评论") }, modifier = Modifier.weight(1f), maxLines = 3)
+                        Button(onClick = { val text = commentText.trim(); if (text.isNotEmpty()) { onComment(text); commentText = "" } }, enabled = commentText.isNotBlank() && !busy) { Text("发送") }
+                    }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onEdit, enabled = !busy) { Text("编辑") } },
