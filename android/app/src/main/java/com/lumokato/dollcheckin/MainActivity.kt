@@ -275,7 +275,7 @@ private data class DraftValidation(
     val missingText: String,
 )
 
-private const val DEFAULT_API_BASE = "https://doll-checkin.u.120224.xyz"
+private const val DEFAULT_API_BASE = "https://nunulo.lumokato.com"
 private const val AMAP_LOG_TAG = "DollAmapNative"
 private val FALLBACK_TAG_GROUPS = listOf(
     TagGroupItem(
