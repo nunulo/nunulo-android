@@ -988,11 +988,11 @@ private fun TopStatusBar(user: AuthUser?, recordsCount: Int, message: String, bu
                         .background(Brush.linearGradient(listOf(DollUi.CoralSoft, DollUi.BlueSoft))),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("D", color = DollUi.Coral, fontWeight = FontWeight.Black)
+                    Text("N", color = DollUi.Coral, fontWeight = FontWeight.Black)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("娃娃打卡", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = DollUi.Ink)
+                    Text("Nunulo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = DollUi.Ink)
                     Text(
                         user?.let { "${it.displayName} 的行程索引 · $recordsCount 张" } ?: "私人照片地图日志",
                         color = DollUi.Muted,

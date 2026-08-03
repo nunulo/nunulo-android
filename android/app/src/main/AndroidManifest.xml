@@ -14,7 +14,7 @@
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme"
-        android:label="娃娃打卡"
+        android:label="Nunulo"
         android:resizeableActivity="true">
         <meta-data
             android:name="com.amap.api.v2.apikey"

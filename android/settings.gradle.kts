@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DollCheckinAndroid"
+rootProject.name = "NunuloAndroid"
 include(":app")
