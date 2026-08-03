@@ -45,11 +45,16 @@ jobs:
           set -euo pipefail
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           apk=app/build/outputs/apk/release/app-release.apk
-          actual_sha1="$($build_tools/apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          actual_sha1="$($build_tools/apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          application_id="$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest application-id "$apk" | tr -d '\r\n')"
+          version_code="$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest version-code "$apk" | tr -d '\r\n')"
+          manifest="$RUNNER_TEMP/nunulo-release-manifest.xml"
+          $ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest print "$apk" > "$manifest"
+          printf 'certificate_sha1=%s\napplication_id=%s\nversion_code=%s\n' "$actual_sha1" "$application_id" "$version_code"
           test "$actual_sha1" = "ced42065d8199c19ad84c970a4bbfd96db377c10"
-          test "$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest application-id "$apk")" = "com.lumokato.nunulo"
-          test "$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest version-code "$apk")" = "2"
-          $ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest print "$apk" | grep -Fq "android:value=\"$AMAP_ANDROID_KEY_RELEASE\""
+          test "$application_id" = "com.lumokato.nunulo"
+          test "$version_code" = "2"
+          grep -Fq "$AMAP_ANDROID_KEY_RELEASE" "$manifest"
       - uses: actions/upload-artifact@v4
         with:
           name: nunulo-android-${{ github.sha }}
