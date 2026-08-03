@@ -332,6 +332,13 @@ private object DollUi {
 }
 
 private class DollApi(private val client: OkHttpClient = defaultClient) {
+    @Volatile
+    private var mediaAccessToken: String = ""
+
+    fun setAccessToken(token: String) {
+        mediaAccessToken = token
+    }
+
     suspend fun login(apiBase: String, login: String, password: String): Pair<AuthUser, AuthTokens> = withContext(Dispatchers.IO) {
         val payload = JSONObject()
             .put("login", login)
@@ -508,8 +515,12 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         parseAuthUser(executeJson(request).getJSONObject("user"))
     }
 
-    suspend fun downloadBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(url).get().build()
+    suspend fun downloadBitmap(apiBase: String, url: String): Bitmap? = withContext(Dispatchers.IO) {
+        val requestBuilder = Request.Builder().url(url).get()
+        if (mediaAccessToken.isNotBlank() && url.startsWith(apiBase.trimEnd('/') + "/api/")) {
+            requestBuilder.header("Authorization", "Bearer $mediaAccessToken")
+        }
+        val request = requestBuilder.build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@withContext null
             val bytes = response.body.bytes()
@@ -573,6 +584,10 @@ private fun NunuloApp() {
     var uploadPhase by rememberSaveable { mutableStateOf("idle") }
     var message by rememberSaveable { mutableStateOf("准备记录今天的娃娃出行") }
     var busy by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(accessToken) {
+        api.setAccessToken(accessToken)
+    }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) {
@@ -1396,7 +1411,7 @@ private fun AvatarView(uri: Uri?, imageUrl: String?, apiBase: String, api: DollA
         }
     }
     val remoteBitmap by produceState<Bitmap?>(initialValue = null, imageUrl, apiBase) {
-        value = imageUrl?.let { runCatching { api.downloadBitmap(resolveAssetUrl(apiBase, it)) }.getOrNull() }
+        value = imageUrl?.let { runCatching { api.downloadBitmap(apiBase, resolveAssetUrl(apiBase, it)) }.getOrNull() }
     }
     val displayBitmap = bitmap ?: remoteBitmap
     Box(
@@ -2006,7 +2021,7 @@ private fun RemoteImage(url: String?, apiBase: String, api: DollApi, aspect: Flo
     }
     val resolved = remember(url, apiBase) { resolveAssetUrl(apiBase, url) }
     val bitmap by produceState<Bitmap?>(initialValue = null, resolved) {
-        value = runCatching { api.downloadBitmap(resolved) }.getOrNull()
+        value = runCatching { api.downloadBitmap(apiBase, resolved) }.getOrNull()
     }
     if (bitmap == null) {
         Box(Modifier.fillMaxWidth().aspectRatio(aspect).background(DollUi.Placeholder), contentAlignment = Alignment.Center) {
