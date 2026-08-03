@@ -45,7 +45,9 @@ jobs:
           set -euo pipefail
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           apk=app/build/outputs/apk/release/app-release.apk
-          actual_sha1="$($build_tools/apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+          certificates="$RUNNER_TEMP/nunulo-release-certificates.txt"
+          $build_tools/apksigner verify --print-certs "$apk" > "$certificates"
+          actual_sha1="$(awk -F': ' 'tolower($0) ~ /certificate sha-1 digest/ && !found { value=$NF; found=1 } END { print value }' "$certificates" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
           application_id="$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest application-id "$apk" | tr -d '\r\n')"
           version_code="$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest version-code "$apk" | tr -d '\r\n')"
           manifest="$RUNNER_TEMP/nunulo-release-manifest.xml"
