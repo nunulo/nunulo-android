@@ -22,7 +22,7 @@ fun firstNotBlank(vararg values: String): String = values.firstOrNull { it.isNot
 
 fun buildConfigString(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-fun readAmapAndroidKey(name: String): String = firstNotBlank(
+fun readBuildConfigValue(name: String): String = firstNotBlank(
     providers.gradleProperty(name).orNull.orEmpty(),
     providers.environmentVariable(name).orNull.orEmpty(),
     readLocalProperty(rootProject.projectDir.resolve("local.properties"), name),
@@ -30,10 +30,20 @@ fun readAmapAndroidKey(name: String): String = firstNotBlank(
 )
 
 val amapAndroidKeyDebug = firstNotBlank(
-    readAmapAndroidKey("AMAP_ANDROID_KEY_DEBUG"),
-    readAmapAndroidKey("AMAP_ANDROID_KEY"),
+    readBuildConfigValue("AMAP_ANDROID_KEY_DEBUG"),
+    readBuildConfigValue("AMAP_ANDROID_KEY"),
 )
-val amapAndroidKeyRelease = readAmapAndroidKey("AMAP_ANDROID_KEY_RELEASE")
+val amapAndroidKeyRelease = readBuildConfigValue("AMAP_ANDROID_KEY_RELEASE")
+val releaseKeystorePath = readBuildConfigValue("NUNULO_RELEASE_KEYSTORE_PATH")
+val releaseStorePassword = readBuildConfigValue("NUNULO_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = readBuildConfigValue("NUNULO_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = readBuildConfigValue("NUNULO_RELEASE_KEY_PASSWORD")
+val releaseSigningConfigured = listOf(
+    releaseKeystorePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all(String::isNotBlank)
 
 android {
     namespace = "com.lumokato.nunulo"
@@ -43,11 +53,22 @@ android {
         applicationId = "com.lumokato.nunulo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.0-personal.2"
         manifestPlaceholders["amapApiKey"] = ""
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        create("personalRelease") {
+            if (releaseSigningConfigured) {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -60,6 +81,9 @@ android {
         release {
             manifestPlaceholders["amapApiKey"] = amapAndroidKeyRelease
             buildConfigField("String", "AMAP_ANDROID_KEY", buildConfigString(amapAndroidKeyRelease))
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("personalRelease")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -97,4 +121,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling:1.11.2")
+}
+
+tasks.register("verifyPersonalReleaseConfiguration") {
+    doLast {
+        check(amapAndroidKeyDebug.isNotBlank()) { "AMAP_ANDROID_KEY_DEBUG is required" }
+        check(amapAndroidKeyRelease.isNotBlank()) { "AMAP_ANDROID_KEY_RELEASE is required" }
+        check(releaseSigningConfigured) { "Personal release signing configuration is incomplete" }
+        check(file(releaseKeystorePath).isFile) { "Personal release keystore does not exist" }
+    }
 }

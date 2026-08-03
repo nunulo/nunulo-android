@@ -11,6 +11,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      AMAP_ANDROID_KEY_DEBUG: ${{ secrets.AMAP_ANDROID_KEY_DEBUG }}
+      AMAP_ANDROID_KEY_RELEASE: ${{ secrets.AMAP_ANDROID_KEY_RELEASE }}
+      NUNULO_RELEASE_STORE_PASSWORD: ${{ secrets.NUNULO_RELEASE_STORE_PASSWORD }}
+      NUNULO_RELEASE_KEY_ALIAS: ${{ secrets.NUNULO_RELEASE_KEY_ALIAS }}
+      NUNULO_RELEASE_KEY_PASSWORD: ${{ secrets.NUNULO_RELEASE_KEY_PASSWORD }}
     defaults:
       run:
         working-directory: android
@@ -23,4 +29,31 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@v3
       - run: chmod +x gradlew
-      - run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+      - name: Prepare personal release signing
+        env:
+          NUNULO_RELEASE_KEYSTORE_BASE64: ${{ secrets.NUNULO_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$NUNULO_RELEASE_KEYSTORE_BASE64"
+          keystore="$RUNNER_TEMP/nunulo-personal-release.keystore"
+          printf '%s' "$NUNULO_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          printf 'NUNULO_RELEASE_KEYSTORE_PATH=%s\n' "$keystore" >> "$GITHUB_ENV"
+      - name: Build and test
+        run: ./gradlew :app:verifyPersonalReleaseConfiguration :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+      - name: Verify release identity and map key
+        run: |
+          set -euo pipefail
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          apk=app/build/outputs/apk/release/app-release.apk
+          actual_sha1="$($build_tools/apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-1 digest: //p')"
+          test "$actual_sha1" = "ced42065d8199c19ad84c970a4bbfd96db377c10"
+          test "$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest application-id "$apk")" = "com.lumokato.nunulo"
+          test "$($ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest version-code "$apk")" = "2"
+          $ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer manifest print "$apk" | grep -Fq "android:value=\"$AMAP_ANDROID_KEY_RELEASE\""
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nunulo-android-${{ github.sha }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
