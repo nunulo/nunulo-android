@@ -1,4 +1,4 @@
-package com.lumokato.dollcheckin
+package com.lumokato.nunulo
 
 import android.Manifest
 import android.content.Context
@@ -142,7 +142,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         MapsInitializer.updatePrivacyShow(this, true, true)
         MapsInitializer.updatePrivacyAgree(this, true)
-        setContent { DollCheckinApp() }
+        setContent { NunuloApp() }
     }
 }
 
@@ -276,7 +276,7 @@ private data class DraftValidation(
 )
 
 private const val DEFAULT_API_BASE = "https://nunulo.lumokato.com"
-private const val AMAP_LOG_TAG = "DollAmapNative"
+private const val AMAP_LOG_TAG = "NunuloAmapNative"
 private val FALLBACK_TAG_GROUPS = listOf(
     TagGroupItem(
         id = "type",
@@ -542,9 +542,9 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
 }
 
 @Composable
-private fun DollCheckinApp() {
+private fun NunuloApp() {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("doll-checkin", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences("nunulo", Context.MODE_PRIVATE) }
     val api = remember { DollApi() }
     val scope = rememberCoroutineScope()
 
@@ -2446,7 +2446,7 @@ private fun formatCoordinate(latitude: Double, longitude: Double): String = "%.5
 
 private fun createCaptureUri(context: Context): Uri {
     val dir = File(context.cacheDir, "capture").apply { mkdirs() }
-    val file = File(dir, "doll-checkin-${System.currentTimeMillis()}.jpg")
+    val file = File(dir, "nunulo-${System.currentTimeMillis()}.jpg")
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }
 

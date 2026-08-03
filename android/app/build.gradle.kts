@@ -11,13 +11,6 @@ fun cleanLocalConfigValue(value: String?): String {
     return text.takeUnless { it.isBlank() || it == "xxxx" || it.startsWith("填写") }.orEmpty()
 }
 
-fun readAmapLocalConfigValue(name: String): String {
-    val configFile = rootProject.projectDir.parentFile.resolve("app/static/config/amap.local.js")
-    if (!configFile.isFile) return ""
-    val value = Regex("""$name\s*:\s*"([^"]+)"""").find(configFile.readText())?.groupValues?.get(1).orEmpty()
-    return cleanLocalConfigValue(value)
-}
-
 fun readLocalProperty(file: java.io.File, name: String): String {
     if (!file.isFile) return ""
     val properties = Properties()
@@ -29,27 +22,32 @@ fun firstNotBlank(vararg values: String): String = values.firstOrNull { it.isNot
 
 fun buildConfigString(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-val amapAndroidKeyExplicit = firstNotBlank(
-    providers.gradleProperty("AMAP_ANDROID_KEY").orNull.orEmpty(),
-    providers.environmentVariable("AMAP_ANDROID_KEY").orNull.orEmpty(),
-    readLocalProperty(rootProject.projectDir.resolve("local.properties"), "AMAP_ANDROID_KEY"),
-    readLocalProperty(rootProject.projectDir.parentFile.resolve("local.properties"), "AMAP_ANDROID_KEY"),
+fun readAmapAndroidKey(name: String): String = firstNotBlank(
+    providers.gradleProperty(name).orNull.orEmpty(),
+    providers.environmentVariable(name).orNull.orEmpty(),
+    readLocalProperty(rootProject.projectDir.resolve("local.properties"), name),
+    readLocalProperty(rootProject.projectDir.parentFile.resolve("local.properties"), name),
 )
-val amapAndroidKeyDebug = firstNotBlank(amapAndroidKeyExplicit, readAmapLocalConfigValue("key"))
+
+val amapAndroidKeyDebug = firstNotBlank(
+    readAmapAndroidKey("AMAP_ANDROID_KEY_DEBUG"),
+    readAmapAndroidKey("AMAP_ANDROID_KEY"),
+)
+val amapAndroidKeyRelease = readAmapAndroidKey("AMAP_ANDROID_KEY_RELEASE")
 
 android {
-    namespace = "com.lumokato.dollcheckin"
+    namespace = "com.lumokato.nunulo"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.lumokato.dollcheckin"
+        applicationId = "com.lumokato.nunulo"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
         manifestPlaceholders["amapApiKey"] = ""
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
@@ -60,8 +58,8 @@ android {
         }
 
         release {
-            manifestPlaceholders["amapApiKey"] = amapAndroidKeyExplicit
-            buildConfigField("String", "AMAP_ANDROID_KEY", buildConfigString(amapAndroidKeyExplicit))
+            manifestPlaceholders["amapApiKey"] = amapAndroidKeyRelease
+            buildConfigField("String", "AMAP_ANDROID_KEY", buildConfigString(amapAndroidKeyRelease))
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
