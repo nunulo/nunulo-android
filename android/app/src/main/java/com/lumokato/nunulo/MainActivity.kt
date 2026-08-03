@@ -2,6 +2,7 @@ package com.lumokato.nunulo
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -9,6 +10,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -130,6 +132,7 @@ import org.json.JSONObject
 import java.io.File
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
@@ -248,14 +251,21 @@ private data class LibrarySummary(
 
 private data class AuthTokens(val accessToken: String, val refreshToken: String?)
 
-private data class UploadDraft(
+internal data class UploadDraft(
     val photoUri: Uri? = null,
-    val placeName: String = "未命名地点",
-    val latitude: String = "31.230416",
-    val longitude: String = "121.473701",
+    val placeName: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
+    val locationSource: String = "manual",
     val note: String = "",
     val tags: String = "娃娃",
     val visibility: String = "private",
+)
+
+internal data class PendingUpload(
+    val requestId: String,
+    val draft: UploadDraft,
+    val attempted: Boolean = false,
 )
 
 private data class BrowseFilters(
@@ -277,6 +287,7 @@ private data class DraftValidation(
 
 private const val DEFAULT_API_BASE = "https://nunulo.lumokato.com"
 private const val AMAP_LOG_TAG = "NunuloAmapNative"
+private const val APP_LOG_TAG = "NunuloApp"
 private val FALLBACK_TAG_GROUPS = listOf(
     TagGroupItem(
         id = "type",
@@ -430,14 +441,16 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         apiBase: String,
         token: String,
         draft: UploadDraft,
+        requestId: String,
+        onProgress: (Int) -> Unit = {},
     ): CheckinItem = withContext(Dispatchers.IO) {
         val uri = draft.photoUri ?: throw IllegalArgumentException("请先拍照或选择图片")
-        val photoBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw IllegalArgumentException("无法读取图片")
-        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        val filename = if (mimeType.contains("png")) "android-upload.png" else "android-upload.jpg"
+        val media = prepareUploadMedia(context.contentResolver, uri) { written, total ->
+            if (total != null && total > 0L) onProgress(((written * 100L) / total).toInt().coerceIn(0, 100))
+        }
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
+            .addFormDataPart("client_request_id", requestId)
             .addFormDataPart("place_name", draft.placeName.ifBlank { "未命名地点" })
             .addFormDataPart("latitude", draft.latitude.trim())
             .addFormDataPart("longitude", draft.longitude.trim())
@@ -445,8 +458,8 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
             .addFormDataPart("tags", draft.tags)
             .addFormDataPart("source", "android_capture")
             .addFormDataPart("visibility", draft.visibility)
-            .addFormDataPart("location_source", "device_location")
-            .addFormDataPart("photo", filename, photoBytes.toRequestBody(mimeType.toMediaType()))
+            .addFormDataPart("location_source", draft.locationSource)
+            .addFormDataPart("photo", media.filename, media.requestBody)
             .build()
         val request = authorizedBuilder(apiBase, "/api/checkins", token).post(body).build()
         parseCheckin(executeJson(request))
@@ -503,13 +516,10 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
     }
 
     suspend fun uploadAvatar(context: Context, apiBase: String, token: String, uri: Uri): AuthUser = withContext(Dispatchers.IO) {
-        val photoBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw IllegalArgumentException("无法读取头像图片")
-        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-        val filename = if (mimeType.contains("png")) "avatar.png" else "avatar.jpg"
+        val media = prepareUploadMedia(context.contentResolver, uri)
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("photo", filename, photoBytes.toRequestBody(mimeType.toMediaType()))
+            .addFormDataPart("photo", media.filename, media.requestBody)
             .build()
         val request = authorizedBuilder(apiBase, "/api/users/me/avatar", token).post(body).build()
         parseAuthUser(executeJson(request).getJSONObject("user"))
@@ -523,8 +533,7 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         val request = requestBuilder.build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@withContext null
-            val bytes = response.body.bytes()
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            response.body.byteStream().use(BitmapFactory::decodeStream)
         }
     }
 
@@ -582,8 +591,38 @@ private fun NunuloApp() {
     var interaction by remember { mutableStateOf(InteractionState()) }
     var comments by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
     var uploadPhase by rememberSaveable { mutableStateOf("idle") }
+    var uploadProgress by rememberSaveable { mutableStateOf(0) }
     var message by rememberSaveable { mutableStateOf("准备记录今天的娃娃出行") }
     var busy by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val pending = loadPendingUpload(prefs)
+        if (pending != null) {
+            draft = pending.draft
+            uploadPhase = if (pending.attempted) "failed" else "idle"
+            message = if (pending.attempted) {
+                "上次上传被中断，草稿已恢复；再次登记会安全重试"
+            } else {
+                "未完成草稿已恢复"
+            }
+            activeTab = AppTab.Publish.name
+        }
+    }
+
+    LaunchedEffect(draft) {
+        if (draft.photoUri != null) {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val pending = loadPendingUpload(prefs)?.takeIf { it.draft.photoUri == draft.photoUri }
+                        ?: PendingUpload(UUID.randomUUID().toString(), draft)
+                    savePendingUpload(prefs, pending.copy(draft = draft))
+                }
+            }.onFailure { error ->
+                message = error.message ?: "无法保存上传草稿"
+                Log.e(APP_LOG_TAG, "Failed to persist upload draft for ${draft.photoUri}", error)
+            }
+        }
+    }
 
     LaunchedEffect(accessToken) {
         api.setAccessToken(accessToken)
@@ -591,21 +630,72 @@ private fun NunuloApp() {
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         if (ok) {
-            message = "照片已就绪，可以补充地点和标签"
+            val capturedUri = draft.photoUri
+            if (capturedUri != null) {
+                scope.launch {
+                    busy = true
+                    try {
+                        val cachedUri = withContext(Dispatchers.IO) { cacheSelectedMedia(context, capturedUri) }
+                        runCatching { context.contentResolver.delete(capturedUri, null, null) }
+                        draft = draft.copy(photoUri = cachedUri)
+                        message = "照片已就绪，可以补充地点和标签"
+                    } catch (error: Exception) {
+                        draft = draft.copy(photoUri = null)
+                        message = error.message ?: "无法读取拍摄照片"
+                        Log.e(APP_LOG_TAG, "Failed to cache captured media $capturedUri", error)
+                    } finally {
+                        busy = false
+                    }
+                }
+            }
         } else {
+            deleteCachedMedia(context, draft.photoUri)
+            draft.photoUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
             draft = draft.copy(photoUri = null)
             message = "拍照已取消"
         }
     }
-    val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val pickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            draft = draft.copy(photoUri = uri)
-            message = "已选择图片，可以上传"
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            scope.launch {
+                busy = true
+                try {
+                    val cachedUri = withContext(Dispatchers.IO) { cacheSelectedMedia(context, uri) }
+                    deleteCachedMedia(context, draft.photoUri)
+                    draft = draft.copy(photoUri = cachedUri)
+                    message = "已选择图片，可以上传"
+                } catch (error: Exception) {
+                    draft = draft.copy(photoUri = null)
+                    message = error.message ?: "无法读取图片"
+                    Log.e(APP_LOG_TAG, "Failed to cache selected media $uri", error)
+                } finally {
+                    busy = false
+                }
+            }
         }
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         val granted = permissions.values.any { it }
-        message = if (granted) "权限已更新" else "部分权限未开启，可继续手动填写位置"
+        if (granted) {
+            scope.launch {
+                val location = currentLocation(context)
+                if (location == null) {
+                    message = "暂时拿不到定位，请稍后重试或手动填写坐标"
+                } else {
+                    draft = draft.copy(
+                        latitude = "%.6f".format(location.latitude),
+                        longitude = "%.6f".format(location.longitude),
+                        locationSource = "device_location",
+                    )
+                    message = "已填入当前位置"
+                }
+            }
+        } else {
+            message = "未开启定位权限，可继续手动填写坐标"
+        }
     }
 
     fun persistTokens(newAccessToken: String, newRefreshToken: String = refreshToken) {
@@ -748,30 +838,46 @@ private fun NunuloApp() {
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.CAMERA,
-                Manifest.permission.READ_MEDIA_IMAGES,
             )
         )
     }
 
     fun useDeviceLocation() {
-        val location = lastKnownLocation(context)
-        if (location == null) {
-            message = "未拿到系统定位，已保留可编辑坐标"
-        } else {
-            draft = draft.copy(
-                latitude = "%.6f".format(location.latitude),
-                longitude = "%.6f".format(location.longitude),
-            )
-            message = "已填入当前位置"
+        if (!hasLocationPermission(context)) {
+            requestCorePermissions()
+            return
+        }
+        scope.launch {
+            val location = currentLocation(context)
+            if (location == null) {
+                message = "暂时拿不到定位，请稍后重试或手动填写坐标"
+            } else {
+                draft = draft.copy(
+                    latitude = "%.6f".format(location.latitude),
+                    longitude = "%.6f".format(location.longitude),
+                    locationSource = "device_location",
+                )
+                message = "已填入当前位置"
+            }
         }
     }
 
     fun takePhoto() {
-        requestCorePermissions()
         val uri = createCaptureUri(context)
+        deleteCachedMedia(context, draft.photoUri)
+        clearPendingUpload(prefs)
         draft = draft.copy(photoUri = uri)
         cameraLauncher.launch(uri)
+    }
+
+    fun clearUploadDraft() {
+        if (busy) return
+        deleteCachedMedia(context, draft.photoUri)
+        clearPendingUpload(prefs)
+        draft = UploadDraft()
+        uploadPhase = "idle"
+        uploadProgress = 0
+        message = "上传草稿已清除"
     }
 
     fun upload() {
@@ -780,24 +886,40 @@ private fun NunuloApp() {
             activeTab = AppTab.Me.name
             return
         }
+        val uploadDraft = draft
         busy = true
         uploadPhase = "preparing"
+        uploadProgress = 0
         scope.launch {
             try {
+                val pendingUpload = withContext(Dispatchers.IO) {
+                    val pending = loadPendingUpload(prefs)?.takeIf { it.draft.photoUri == uploadDraft.photoUri }
+                        ?: PendingUpload(UUID.randomUUID().toString(), uploadDraft)
+                    pending.copy(draft = uploadDraft, attempted = true).also { savePendingUpload(prefs, it) }
+                }
                 uploadPhase = "uploading"
-                val uploaded = runWithTokenRefresh { token -> api.uploadCheckin(context, apiBase, token, draft) }
+                val uploaded = runWithTokenRefresh { token ->
+                    api.uploadCheckin(context, apiBase, token, uploadDraft, pendingUpload.requestId) { progress ->
+                        scope.launch { uploadProgress = progress }
+                    }
+                }
                 records = listOf(uploaded) + records.filterNot { it.id == uploaded.id }
                 currentUser = runCatching { runWithTokenRefresh { token -> api.me(apiBase, token) } }.getOrNull() ?: currentUser
                 messages = runCatching { runWithTokenRefresh { token -> api.listMessages(apiBase, token) } }.getOrDefault(messages)
                 refreshLibraryState()
+                deleteCachedMedia(context, uploadDraft.photoUri)
+                clearPendingUpload(prefs)
                 draft = UploadDraft()
                 pendingDeleteId = ""
                 uploadPhase = "done"
+                uploadProgress = 100
                 message = "上传成功：${uploaded.placeName}"
                 activeTab = AppTab.Feed.name
             } catch (error: Exception) {
                 uploadPhase = "failed"
+                uploadProgress = 0
                 message = error.message ?: "上传失败"
+                Log.e(APP_LOG_TAG, "Upload failed for ${uploadDraft.photoUri}", error)
             } finally {
                 busy = false
             }
@@ -909,11 +1031,14 @@ private fun NunuloApp() {
                             draft = draft,
                             busy = busy,
                             uploadPhase = uploadPhase,
+                            uploadProgress = uploadProgress,
+                            uploadMessage = message,
                             tagGroups = tagCatalog.groups.ifEmpty { FALLBACK_TAG_GROUPS },
                             onDraftChange = { draft = it },
-                            onPick = { pickerLauncher.launch("image/*") },
+                            onPick = { pickerLauncher.launch(arrayOf("image/jpeg", "image/png", "image/webp")) },
                             onCamera = { takePhoto() },
                             onLocation = { useDeviceLocation() },
+                            onClear = { clearUploadDraft() },
                             onUpload = { upload() },
                         )
                         AppTab.Library -> LibraryScreen(
@@ -936,6 +1061,7 @@ private fun NunuloApp() {
                             avatarUri = avatarUri,
                             busy = busy,
                             onLoginNameChange = { loginName = it },
+                            onApiBaseChange = { apiBase = it },
                             onPasswordChange = { password = it },
                             onLogin = { login() },
                             onLogout = { logout() },
@@ -1283,7 +1409,7 @@ private fun PhotoFeedTile(record: CheckinItem, apiBase: String, api: DollApi, mo
 }
 
 @Composable
-private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String, tagGroups: List<TagGroupItem>, onDraftChange: (UploadDraft) -> Unit, onPick: () -> Unit, onCamera: () -> Unit, onLocation: () -> Unit, onUpload: () -> Unit) {
+private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String, uploadProgress: Int, uploadMessage: String, tagGroups: List<TagGroupItem>, onDraftChange: (UploadDraft) -> Unit, onPick: () -> Unit, onCamera: () -> Unit, onLocation: () -> Unit, onClear: () -> Unit, onUpload: () -> Unit) {
     val validation = validateDraft(draft)
     fun toggle(tag: String) = onDraftChange(draft.copy(tags = toggleTag(draft.tags, tag)))
     LazyColumn(Modifier.fillMaxSize().background(Color.White), contentPadding = PaddingValues(bottom = 20.dp)) {
@@ -1298,15 +1424,39 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
                         Box(Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text("定位", color = DollUi.Coral, fontWeight = FontWeight.Bold) }
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = draft.latitude,
+                        onValueChange = { onDraftChange(draft.copy(latitude = it, locationSource = "manual")) },
+                        label = { Text("纬度") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        shape = RoundedCornerShape(4.dp),
+                    )
+                    OutlinedTextField(
+                        value = draft.longitude,
+                        onValueChange = { onDraftChange(draft.copy(longitude = it, locationSource = "manual")) },
+                        label = { Text("经度") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        shape = RoundedCornerShape(4.dp),
+                    )
+                }
+                Text(
+                    if (draft.locationSource == "device_location") "坐标来自设备定位，可手工修正" else "可直接填写坐标，或点击定位自动获取",
+                    color = DollUi.Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 PublishTagSelector(tagGroups, parseDraftTags(draft.tags), ::toggle)
                 OutlinedTextField(draft.note, { onDraftChange(draft.copy(note = it)) }, label = { Text("备注") }, modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp), shape = RoundedCornerShape(4.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("可见范围", color = DollUi.Ink, fontWeight = FontWeight.Bold)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("public" to "公开", "friends" to "关注可见", "private" to "私密").forEach { pair -> StitchChip(pair.second, draft.visibility == pair.first) { onDraftChange(draft.copy(visibility = pair.first)) } }
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("本阶段仅保存为私密记录", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClear, enabled = !busy && draft.photoUri != null) { Text("清除草稿") }
                 }
-                if (busy || uploadPhase == "failed") UploadPhaseBar(uploadPhase, busy)
+                PublishReadinessCard(validation, draft.visibility)
+                if (busy || uploadPhase == "failed") UploadPhaseBar(uploadPhase, busy, uploadProgress, uploadMessage)
                 Surface(color = if (!busy && validation.ready) DollUi.Coral else DollUi.Placeholder, shape = RoundedCornerShape(4.dp), modifier = Modifier.fillMaxWidth().height(48.dp).clickable(enabled = !busy && validation.ready, onClick = onUpload)) {
                     Box(contentAlignment = Alignment.Center) { Text(if (busy) "上传中" else "登记", color = if (!busy && validation.ready) Color.White else DollUi.Muted, fontWeight = FontWeight.Bold) }
                 }
@@ -1438,7 +1588,7 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: DollApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, message: String) {
+private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: DollApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onApiBaseChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, message: String) {
     val places = records.map { it.placeName }.filter { it.isNotBlank() }.distinct().size
     val tags = records.flatMap { it.tags }.distinct().size
     if (user == null) {
@@ -1447,6 +1597,10 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(loginName, onLoginNameChange, label = { Text("邮箱或用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             Spacer(Modifier.height(10.dp))
+            if (BuildConfig.DEBUG) {
+                OutlinedTextField(apiBase, onApiBaseChange, label = { Text("调试 API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Spacer(Modifier.height(10.dp))
+            }
             OutlinedTextField(password, onPasswordChange, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
             Spacer(Modifier.height(14.dp))
             Button(onClick = onLogin, enabled = !busy && loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("登录") }
@@ -1688,7 +1842,7 @@ private fun ReadinessStep(label: String, done: Boolean, modifier: Modifier = Mod
 }
 
 @Composable
-private fun UploadPhaseBar(uploadPhase: String, busy: Boolean) {
+private fun UploadPhaseBar(uploadPhase: String, busy: Boolean, uploadProgress: Int, uploadMessage: String) {
     val text = when (uploadPhase) {
         "preparing" -> "正在准备图片"
         "uploading" -> "正在登记照片"
@@ -1705,10 +1859,13 @@ private fun UploadPhaseBar(uploadPhase: String, busy: Boolean) {
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         LinearProgressIndicator(
-            progress = { progress },
+            progress = { if (uploadPhase == "uploading" && uploadProgress > 0) uploadProgress / 100f else progress },
             modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(99.dp)),
         )
-        Text(text, color = if (uploadPhase == "failed") DollUi.Danger else DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+        Text(if (uploadPhase == "uploading" && uploadProgress > 0) "$text $uploadProgress%" else text, color = if (uploadPhase == "failed") DollUi.Danger else DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+        if (uploadPhase == "failed" && uploadMessage.isNotBlank()) {
+            Text(uploadMessage, color = DollUi.Danger, style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
@@ -1761,8 +1918,11 @@ private fun MapPreview(title: String, subtitle: String, records: List<CheckinIte
 private fun AmapNativeMap(records: List<CheckinItem>, world: Boolean, modifier: Modifier = Modifier, onOpen: (CheckinItem) -> Unit) {
     val mapRecords = remember(records) { records.filter { it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 && !(it.latitude == 0.0 && it.longitude == 0.0) } }
     val hasAmapConfig = BuildConfig.AMAP_ANDROID_KEY.isNotBlank()
-    if (!hasAmapConfig) {
-        StaticMapFallback(records = mapRecords, world = world, modifier = modifier, reason = "地图配置待接入", onOpen = onOpen)
+    val primaryAbi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+    val supportsAmapNative = primaryAbi == "arm64-v8a" || primaryAbi == "armeabi-v7a"
+    if (!hasAmapConfig || !supportsAmapNative) {
+        val reason = if (!hasAmapConfig) "地图配置待接入" else "模拟器使用坐标预览"
+        StaticMapFallback(records = mapRecords, world = world, modifier = modifier, reason = reason, onOpen = onOpen)
         return
     }
 
@@ -1915,7 +2075,7 @@ private fun CheckinDetailDialog(
         title = { Text(record.placeName.ifBlank { "未命名地点" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { RemoteImage(record.originalUrl ?: record.displayUrl ?: record.thumbUrl, apiBase, api, aspect = 0.82f) }
+                item { RemoteImage(record.displayUrl ?: record.thumbUrl ?: record.originalUrl, apiBase, api, aspect = 0.82f) }
                 item { Text("${shortDate(record.takenAt ?: record.createdAt)} · ${visibilityLabel(record.visibility)}", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall) }
                 if (record.note.isNotBlank()) item { Text(record.note, color = DollUi.Ink) }
                 if (record.tags.isNotEmpty()) item {
@@ -2041,12 +2201,12 @@ private fun RemoteImage(url: String?, apiBase: String, api: DollApi, aspect: Flo
 private fun PhotoPickerCard(uri: Uri?, onPick: () -> Unit, onCamera: () -> Unit) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
-        value = if (uri == null) null else withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { input -> BitmapFactory.decodeStream(input) } }
+        value = if (uri == null) null else withContext(Dispatchers.IO) { decodeSampledBitmap(context.contentResolver, uri) }
     }
     Box(Modifier.fillMaxWidth().height(360.dp).background(DollUi.Placeholder).clickable(onClick = onPick), contentAlignment = Alignment.Center) {
         if (bitmap == null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("选择一张照片", color = DollUi.Ink, fontWeight = FontWeight.Bold)
+                Text(if (uri == null) "选择一张照片" else "照片已选择，预览暂不可用", color = DollUi.Ink, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(color = DollUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPick)) { Text("相册", color = Color.White, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontWeight = FontWeight.Bold) }
                     Surface(color = Color.White, shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, DollUi.Hairline), modifier = Modifier.clickable(onClick = onCamera)) { Text("拍摄", color = DollUi.Ink, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontWeight = FontWeight.Bold) }
@@ -2463,16 +2623,6 @@ private fun createCaptureUri(context: Context): Uri {
     val dir = File(context.cacheDir, "capture").apply { mkdirs() }
     val file = File(dir, "nunulo-${System.currentTimeMillis()}.jpg")
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-}
-
-private fun lastKnownLocation(context: Context): Location? {
-    val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    if (!fine && !coarse) return null
-    val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    return manager.getProviders(true)
-        .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
-        .maxByOrNull { it.time }
 }
 
 private fun formatBytes(value: Long): String {
