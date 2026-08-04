@@ -15,8 +15,10 @@ Nunulo Android 日常客户端，使用 Kotlin、Jetpack Compose、高德地图 
 从 `android` 目录使用仓库固定的 Gradle Wrapper：
 
 ```powershell
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug
 ```
+
+网络请求、HTTP 状态错误和 refresh token 协调已从 Compose 页面中提取为可单测边界；401 使用明确状态码判断，并发失效请求只执行一次 refresh，非鉴权失败不会被误重试。
 
 高德原生 Android Key 通过 Gradle 属性、环境变量或未提交的 `local.properties` 提供：
 

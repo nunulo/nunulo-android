@@ -133,7 +133,6 @@ import java.io.File
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -334,7 +333,8 @@ private object DollUi {
     val CardRadius = 8.dp
 }
 
-private class DollApi(private val client: OkHttpClient = defaultClient) {
+private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClient()) {
+    private val http = JsonHttpClient(client)
     @Volatile
     private var mediaAccessToken: String = ""
 
@@ -353,7 +353,7 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
             .url(apiUrl(apiBase, "/api/auth/login"))
             .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-        val json = executeJson(request)
+        val json = http.executeJson(request)
         val user = parseAuthUser(json.getJSONObject("user"), fallbackUsage = 0L, fallbackQuota = 0L)
         val tokens = AuthTokens(
             accessToken = json.getString("access_token"),
@@ -363,8 +363,8 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
     }
 
     suspend fun me(apiBase: String, token: String): AuthUser = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/auth/me", token).get().build()
-        parseAuthUser(executeJson(request).getJSONObject("user"))
+        val request = http.authorizedBuilder(apiBase, "/api/auth/me", token).get().build()
+        parseAuthUser(http.executeJson(request).getJSONObject("user"))
     }
 
     suspend fun refreshAccessToken(apiBase: String, refreshToken: String): String = withContext(Dispatchers.IO) {
@@ -375,7 +375,7 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
             .url(apiUrl(apiBase, "/api/auth/refresh"))
             .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-        executeJson(request).getString("access_token")
+        http.executeJson(request).getString("access_token")
     }
 
     suspend fun listCheckins(apiBase: String, token: String): List<CheckinItem> = withContext(Dispatchers.IO) {
@@ -524,35 +524,19 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         }
     }
 
-    private fun authorizedBuilder(apiBase: String, path: String, token: String): Request.Builder = Request.Builder()
-        .url(apiUrl(apiBase, path))
-        .header("Authorization", "Bearer $token")
+    private fun authorizedBuilder(apiBase: String, path: String, token: String): Request.Builder =
+        http.authorizedBuilder(apiBase, path, token)
 
-    private fun executeJson(request: Request): JSONObject {
-        client.newCall(request).execute().use { response ->
-            val text = response.body.string()
-            if (!response.isSuccessful) {
-                val detail = runCatching { JSONObject(text).optString("detail") }.getOrNull()
-                throw IllegalStateException(detail?.ifBlank { null } ?: "HTTP ${response.code}")
-            }
-            return JSONObject(text)
-        }
-    }
+    private fun executeJson(request: Request): JSONObject = http.executeJson(request)
 
-    companion object {
-        private val defaultClient = OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(90, TimeUnit.SECONDS)
-            .build()
-    }
 }
 
 @Composable
 private fun NunuloApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("nunulo", Context.MODE_PRIVATE) }
-    val api = remember { DollApi() }
+    val api = remember { NunuloApi() }
+    val tokenRefreshCoordinator = remember { TokenRefreshCoordinator() }
     val scope = rememberCoroutineScope()
 
     var activeTab by rememberSaveable { mutableStateOf(AppTab.Feed.name) }
@@ -709,15 +693,13 @@ private fun NunuloApp() {
     }
 
     suspend fun <T> runWithTokenRefresh(block: suspend (String) -> T): T {
-        if (accessToken.isBlank()) throw IllegalStateException("请先登录")
-        return try {
-            block(accessToken)
-        } catch (firstError: Exception) {
-            if (refreshToken.isBlank() || !looksLikeExpiredToken(firstError)) throw firstError
-            val refreshed = api.refreshAccessToken(apiBase, refreshToken)
-            persistTokens(refreshed)
-            block(refreshed)
-        }
+        return tokenRefreshCoordinator.run(
+            currentAccessToken = { accessToken },
+            currentRefreshToken = { refreshToken },
+            persistAccessToken = { persistTokens(it) },
+            refreshAccessToken = { api.refreshAccessToken(apiBase, it) },
+            block = block,
+        )
     }
 
     suspend fun refreshLibraryState() {
@@ -1205,7 +1187,7 @@ private fun StitchChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun FeedScreen(
     records: List<CheckinItem>, allRecords: List<CheckinItem>, filters: BrowseFilters,
-    apiBase: String, api: DollApi, pendingDeleteId: String,
+    apiBase: String, api: NunuloApi, pendingDeleteId: String,
     onFiltersChange: (BrowseFilters) -> Unit, onPublish: () -> Unit, onDelete: (CheckinItem) -> Unit, onOpen: (CheckinItem) -> Unit,
 ) {
     var feedMode by rememberSaveable { mutableStateOf("发现") }
@@ -1364,7 +1346,7 @@ private fun RankingRow(index: Int, tag: String, count: Int, selected: Boolean, o
 }
 
 @Composable
-private fun PhotoFeedTile(record: CheckinItem, apiBase: String, api: DollApi, modifier: Modifier = Modifier, tall: Boolean) {
+private fun PhotoFeedTile(record: CheckinItem, apiBase: String, api: NunuloApi, modifier: Modifier = Modifier, tall: Boolean) {
     JournalCard(modifier = modifier, containerColor = DollUi.Surface, radius = 12.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))) {
@@ -1496,7 +1478,7 @@ private fun messageColors(kind: String, priority: String): Pair<Color, Color> = 
 }
 
 @Composable
-private fun AvatarView(uri: Uri?, imageUrl: String?, apiBase: String, api: DollApi, label: String, onClick: () -> Unit) {
+private fun AvatarView(uri: Uri?, imageUrl: String?, apiBase: String, api: NunuloApi, label: String, onClick: () -> Unit) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
         value = if (uri == null) null else withContext(Dispatchers.IO) {
@@ -1531,7 +1513,7 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: DollApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onApiBaseChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, message: String) {
+private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: NunuloApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onApiBaseChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, message: String) {
     val places = records.map { it.placeName }.filter { it.isNotBlank() }.distinct().size
     val tags = records.flatMap { it.tags }.distinct().size
     if (user == null) {
@@ -1972,7 +1954,7 @@ private fun configureAmap(amap: AMap, records: List<CheckinItem>, world: Boolean
 private fun CheckinCard(
     record: CheckinItem,
     apiBase: String,
-    api: DollApi,
+    api: NunuloApi,
     pendingDelete: Boolean,
     onDelete: () -> Unit,
 ) {
@@ -2001,7 +1983,7 @@ private fun CheckinCard(
 private fun CheckinDetailDialog(
     record: CheckinItem,
     apiBase: String,
-    api: DollApi,
+    api: NunuloApi,
     busy: Boolean,
     pendingDelete: Boolean,
     interaction: InteractionState,
@@ -2114,7 +2096,7 @@ private fun CheckinEditDialog(record: CheckinItem, tagGroups: List<TagGroupItem>
 }
 
 @Composable
-private fun RemoteImage(url: String?, apiBase: String, api: DollApi, aspect: Float = 1.25f) {
+private fun RemoteImage(url: String?, apiBase: String, api: NunuloApi, aspect: Float = 1.25f) {
     if (url.isNullOrBlank()) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(aspect).background(DollUi.Placeholder),
@@ -2264,8 +2246,6 @@ private fun DollTheme(content: @Composable () -> Unit) {
     )
     MaterialTheme(colorScheme = colors, typography = compactTypography, content = content)
 }
-
-private fun apiUrl(apiBase: String, path: String): String = apiBase.trim().trimEnd('/') + path
 
 private fun resolveAssetUrl(apiBase: String, url: String): String = when {
     url.startsWith("http://") || url.startsWith("https://") -> url
@@ -2494,11 +2474,6 @@ private fun visibilityLabel(visibility: String): String = when (visibility) {
 private fun looksLikeCollectionTag(tag: String): Boolean {
     val text = tag.lowercase()
     return "bang" in text || "mygo" in text || "ave" in text || "ip" in text || "角色" in tag || "活动" in tag || "团" in tag
-}
-
-private fun looksLikeExpiredToken(error: Throwable): Boolean {
-    val text = error.message.orEmpty()
-    return "访问令牌" in text || "401" in text || "token" in text.lowercase()
 }
 
 private data class MapPoint(val latitude: Double, val longitude: Double)
