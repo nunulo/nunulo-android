@@ -153,7 +153,7 @@ private enum class AppTab(val title: String) {
     Feed("首页"),
     Map("地图"),
     Publish("登记"),
-    Library("消息"),
+    Messages("消息"),
     Me("我的"),
 }
 
@@ -239,13 +239,6 @@ private data class MapCellItem(
     val scope: String,
     val photoCount: Int,
     val checkinCount: Int,
-)
-
-private data class LibrarySummary(
-    val albums: List<AlbumItem> = emptyList(),
-    val personalCells: Int = 0,
-    val storageUsageBytes: Long = 0L,
-    val storageProvider: String = ""
 )
 
 private data class AuthTokens(val accessToken: String, val refreshToken: String?)
@@ -430,11 +423,6 @@ private class DollApi(private val client: OkHttpClient = defaultClient) {
         }
     }
 
-    suspend fun librarySummary(apiBase: String, token: String): LibrarySummary = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/library/summary", token).get().build()
-        parseLibrarySummary(executeJson(request))
-    }
-
     suspend fun uploadCheckin(
         context: Context,
         apiBase: String,
@@ -580,7 +568,6 @@ private fun NunuloApp() {
     var albums by remember { mutableStateOf<List<AlbumItem>>(emptyList()) }
     var personalMapCells by remember { mutableStateOf<List<MapCellItem>>(emptyList()) }
     var worldMapCells by remember { mutableStateOf<List<MapCellItem>>(emptyList()) }
-    var librarySummary by remember { mutableStateOf(LibrarySummary()) }
     var draft by remember { mutableStateOf(UploadDraft()) }
     var avatarUri by remember { mutableStateOf<Uri?>(null) }
     var filters by remember { mutableStateOf(BrowseFilters()) }
@@ -716,7 +703,6 @@ private fun NunuloApp() {
         albums = emptyList()
         personalMapCells = emptyList()
         worldMapCells = emptyList()
-        librarySummary = LibrarySummary()
         prefs.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
         activeTab = AppTab.Me.name
@@ -738,16 +724,9 @@ private fun NunuloApp() {
         if (accessToken.isBlank()) return
         tagCatalog = runCatching { runWithTokenRefresh { token -> api.tagCatalog(apiBase, token) } }
             .getOrDefault(tagCatalog)
-        runCatching {
-            val nextSummary = runWithTokenRefresh { token -> api.librarySummary(apiBase, token) }
-            librarySummary = nextSummary
-            albums = nextSummary.albums
-        }
+        albums = runCatching { runWithTokenRefresh { token -> api.listAlbums(apiBase, token) } }.getOrDefault(albums)
         personalMapCells = runCatching { runWithTokenRefresh { token -> api.listMapCells(apiBase, token, "personal") } }.getOrDefault(personalMapCells)
         worldMapCells = runCatching { runWithTokenRefresh { token -> api.listMapCells(apiBase, token, "world") } }.getOrDefault(worldMapCells)
-        if (albums.isEmpty()) {
-            albums = runCatching { runWithTokenRefresh { token -> api.listAlbums(apiBase, token) } }.getOrDefault(albums)
-        }
     }
 
     val avatarPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -1040,14 +1019,8 @@ private fun NunuloApp() {
                             onClear = { clearUploadDraft() },
                             onUpload = { upload() },
                         )
-                        AppTab.Library -> LibraryScreen(
+                        AppTab.Messages -> MessagesScreen(
                             messages = messages,
-                            records = records,
-                            albums = albums,
-                            summary = librarySummary,
-                            personalMapCells = personalMapCells,
-                            worldMapCells = worldMapCells,
-                            onOpenPublish = { activeTab = AppTab.Publish.name },
                             onReadAll = { scope.launch { runWithTokenRefresh { token -> api.markAllNotificationsRead(apiBase, token) }; messages = runWithTokenRefresh { token -> api.listMessages(apiBase, token) } } },
                         )
                         AppTab.Me -> MeScreen(
@@ -1211,7 +1184,7 @@ private fun StitchTabIcon(tab: AppTab, selected: Boolean) {
         AppTab.Feed -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
         AppTab.Map -> if (selected) Icons.Filled.Map else Icons.Outlined.Map
         AppTab.Publish -> if (selected) Icons.Filled.AddCircle else Icons.Outlined.AddCircleOutline
-        AppTab.Library -> if (selected) Icons.Filled.ChatBubble else Icons.Outlined.ChatBubbleOutline
+        AppTab.Messages -> if (selected) Icons.Filled.ChatBubble else Icons.Outlined.ChatBubbleOutline
         AppTab.Me -> if (selected) Icons.Filled.Person else Icons.Outlined.PersonOutline
     }
     Icon(
@@ -1465,7 +1438,7 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
 }
 
 @Composable
-private fun LibraryScreen(messages: List<MessageItem>, records: List<CheckinItem>, albums: List<AlbumItem>, summary: LibrarySummary, personalMapCells: List<MapCellItem>, worldMapCells: List<MapCellItem>, onOpenPublish: () -> Unit, onReadAll: () -> Unit) {
+private fun MessagesScreen(messages: List<MessageItem>, onReadAll: () -> Unit) {
     var mode by rememberSaveable { mutableStateOf("全部") }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         stickyHeader {
@@ -1494,34 +1467,6 @@ private fun MessageLine(title: String, subtitle: String, background: Color, fore
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, fontWeight = FontWeight.Bold, maxLines = 1)
             Text(subtitle, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun LibrarySummaryCard(
-    albums: List<AlbumItem>,
-    summary: LibrarySummary,
-    personalCellCount: Int,
-    worldCellCount: Int,
-    recordsCount: Int,
-) {
-    val smartCount = albums.filter { it.type == "smart" }.sumOf { it.itemCount }.takeIf { it > 0 } ?: recordsCount
-    val rankCount = albums.count { it.type == "rank" }
-    JournalCard(containerColor = DollUi.Surface) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                CompactStat("合集", smartCount.toString(), Modifier.weight(1f))
-                CompactStat("地图", personalCellCount.toString(), Modifier.weight(1f))
-                CompactStat("榜单", rankCount.toString(), Modifier.weight(1f))
-            }
-            Text(
-                "个人地图 $personalCellCount · 世界地图 $worldCellCount · 存储 ${formatBytes(summary.storageUsageBytes)}${summary.storageProvider.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""}",
-                color = DollUi.Muted,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -2408,24 +2353,6 @@ private fun parseMapCell(json: JSONObject, scope: String): MapCellItem {
         scope = scope,
         photoCount = json.optInt("photo_count", 0),
         checkinCount = json.optInt("checkin_count", 0),
-    )
-}
-
-private fun parseLibrarySummary(json: JSONObject): LibrarySummary {
-    val albumsJson = json.optJSONObject("albums")?.optJSONArray("items")
-    val albums = buildList {
-        if (albumsJson != null) {
-            for (index in 0 until albumsJson.length()) add(parseAlbum(albumsJson.getJSONObject(index)))
-        }
-    }
-    val mapJson = json.optJSONObject("map")?.optJSONObject("personal_cells")
-    val storageJson = json.optJSONObject("storage")
-    val capabilities = storageJson?.optJSONObject("asset_capabilities")
-    return LibrarySummary(
-        albums = albums,
-        personalCells = mapJson?.optInt("total", 0) ?: 0,
-        storageUsageBytes = storageJson?.optLong("usage_bytes", 0L) ?: 0L,
-        storageProvider = capabilities?.optString("provider", "") ?: "",
     )
 }
 
