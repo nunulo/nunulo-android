@@ -244,7 +244,6 @@ private data class MapCellItem(
 private data class LibrarySummary(
     val albums: List<AlbumItem> = emptyList(),
     val personalCells: Int = 0,
-    val queuedJobs: Int = 0,
     val storageUsageBytes: Long = 0L,
     val storageProvider: String = ""
 )
@@ -1515,7 +1514,6 @@ private fun LibrarySummaryCard(
                 CompactStat("合集", smartCount.toString(), Modifier.weight(1f))
                 CompactStat("地图", personalCellCount.toString(), Modifier.weight(1f))
                 CompactStat("榜单", rankCount.toString(), Modifier.weight(1f))
-                CompactStat("队列", summary.queuedJobs.toString(), Modifier.weight(1f))
             }
             Text(
                 "个人地图 $personalCellCount · 世界地图 $worldCellCount · 存储 ${formatBytes(summary.storageUsageBytes)}${summary.storageProvider.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""}",
@@ -2426,7 +2424,6 @@ private fun parseLibrarySummary(json: JSONObject): LibrarySummary {
     return LibrarySummary(
         albums = albums,
         personalCells = mapJson?.optInt("total", 0) ?: 0,
-        queuedJobs = json.optJSONObject("jobs")?.optInt("queued", 0) ?: 0,
         storageUsageBytes = storageJson?.optLong("usage_bytes", 0L) ?: 0L,
         storageProvider = capabilities?.optString("provider", "") ?: "",
     )
