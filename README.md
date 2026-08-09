@@ -4,10 +4,10 @@ Nunulo Android 日常客户端，使用 Kotlin、Jetpack Compose、高德地图 
 
 ## 当前状态
 
-- 当前生产 API：`https://nunulo.lumokato.com`。
-- 当前版本：`0.1.0-personal.2` 个人签名测试版，`versionCode=2`。
-- 模拟器已完成登录、选图预览、北京站定位、手工坐标、上传进度、中断草稿恢复、幂等重试、私密图片读取、编辑和删除闭环。
-- 当前里程碑：在物理 ARM 设备验收高德原生地图、拍照、大图和可升级 release APK。
+- 项目尚未正式上线；历史域名、测试部署和 APK 不代表当前 API 或发布版本。
+- 构建默认使用 `https://nunulo.lumokato.com`；需要切换本地或其他测试环境时，通过 Gradle 属性、环境变量或未提交的 `local.properties` 显式提供 `NUNULO_API_BASE_URL`。
+- 当前版本身份为 `0.2.0-test.1`（`versionCode=3`），目标是邀请制多人测试；历史模拟器闭环不再证明本轮重构后的运行结果。
+- 当前里程碑：多人动态、消息、成员、合集与数据入口已完成本地实现；下一步在真实 PostGIS、外部测试环境和物理设备上验收。
 - Android namespace、applicationId 和 Kotlin 包路径统一使用 `com.lumokato.nunulo`，不保留旧包升级兼容。
 
 ## 本地构建
@@ -20,14 +20,17 @@ Nunulo Android 日常客户端，使用 Kotlin、Jetpack Compose、高德地图 
 
 网络请求、HTTP 状态错误和 refresh token 协调已从 Compose 页面中提取为可单测边界；401 使用明确状态码判断，并发失效请求只执行一次 refresh，非鉴权失败不会被误重试。
 
+Android 现有五个入口：动态、地图、登记、消息、我的。动态支持全部、关注、公开、我的四种范围；登记和编辑支持仅自己、关注者、所有测试成员三档可见性；详情支持点赞、评论、举报、本人编辑删除和加入合集。消息显示未读数量和测试成员，个人页提供存储额度、合集、数据导出下载分享和个人邀请码。地图始终只显示本人记录。
+
 高德原生 Android Key 通过 Gradle 属性、环境变量或未提交的 `local.properties` 提供：
 
 ```properties
 AMAP_ANDROID_KEY_DEBUG=<绑定 com.lumokato.nunulo 与 debug SHA-1 的 Android Key>
 AMAP_ANDROID_KEY_RELEASE=<绑定 com.lumokato.nunulo 与 release SHA-1 的 Android Key>
+NUNULO_API_BASE_URL=<当前测试 API 基址>
 ```
 
-`AMAP_ANDROID_KEY` 只作为 debug 的便捷别名；release 构建必须显式提供 `AMAP_ANDROID_KEY_RELEASE`。Web/JS Key 不会被读取。没有 Key 时应用使用地点名和坐标回退，不显示伪地图。真实凭据、APK、照片和设备数据不进入仓库。
+debug 与 release 构建必须分别显式提供对应的 Android Key。Web/JS Key 不会被读取。没有 Key 时应用显示明确的地图不可用状态，不伪造地图。真实凭据、APK、照片和设备数据不进入仓库。
 
 个人 release 使用稳定的项目外 keystore，通过以下 Gradle 属性或环境变量注入：
 
@@ -38,7 +41,9 @@ NUNULO_RELEASE_KEY_ALIAS=<alias>
 NUNULO_RELEASE_KEY_PASSWORD=<key password>
 ```
 
-当前个人 release 沿用既有 debug 证书，SHA-1 为 `CE:D4:20:65:D8:19:9C:19:AD:84:C9:70:A4:BB:FD:96:DB:37:7C:10`，用于保证已安装 debug 包可直接升级，并匹配当前高德 Android Key。以后如切换新的正式发布证书，必须同时创建新的高德 Android Key，不能静默替换签名身份。
+测试包不承担向后升级兼容义务。release 必须使用独立、稳定的项目签名，并为该签名创建对应的高德 Android Key；不得为了覆盖历史 debug 安装而复用 debug 证书。
+
+推送 `v*` tag 时，GitHub Actions 在测试、签名、包名、版本号和地图 Key 校验通过后创建预发布 Release，并上传固定名称 `nunulo-android.apk` 与 `nunulo-android.sha256`。普通分支推送只保留 CI artifact，不会自动创建公开下载。
 
 选择或拍摄的照片会复制到应用私有目录并立即保存草稿。应用被强停或上传中断后会恢复同一照片、地点、坐标、标签、备注和请求号；重复登记由 API 幂等保护。用户可在登记页手工修改经纬度或主动清除草稿。
 

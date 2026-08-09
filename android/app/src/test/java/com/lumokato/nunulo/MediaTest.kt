@@ -61,4 +61,21 @@ class MediaTest {
         assertTrue(updates.isNotEmpty())
         assertEquals(content.size.toLong() to content.size.toLong(), updates.last())
     }
+
+    @Test
+    fun pendingUploadFieldsPreserveVisibility() {
+        val fields = pendingUploadFields(
+            UploadDraft(
+                placeName = "人民广场",
+                latitude = "31.2304",
+                longitude = "121.4737",
+                tags = "娃娃,测试",
+                visibility = "followers",
+            )
+        )
+
+        assertEquals("followers", fields["visibility"])
+        assertEquals("人民广场", fields["place_name"])
+        assertEquals("娃娃,测试", fields["tags"])
+    }
 }

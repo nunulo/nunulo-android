@@ -51,22 +51,18 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.AddCircleOutline
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -89,10 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -102,7 +95,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -149,11 +141,18 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class AppTab(val title: String) {
-    Feed("首页"),
+    Feed("动态"),
     Map("地图"),
     Publish("登记"),
-    Messages("消息"),
+    Notifications("消息"),
     Me("我的"),
+}
+
+internal enum class FeedScope(val apiValue: String, val label: String) {
+    All("all", "全部"),
+    Following("following", "关注"),
+    Public("public", "公开"),
+    Mine("mine", "我的"),
 }
 
 private data class AuthUser(
@@ -167,8 +166,10 @@ private data class AuthUser(
     val avatarUrl: String?,
 )
 
-private data class CheckinItem(
+internal data class CheckinItem(
     val id: String,
+    val userId: Int = 0,
+    val authorName: String = "我",
     val placeName: String,
     val note: String,
     val latitude: Double,
@@ -177,7 +178,11 @@ private data class CheckinItem(
     val createdAt: String?,
     val takenAt: String?,
     val source: String,
-    val visibility: String,
+    val visibility: String = "private",
+    val canEdit: Boolean = true,
+    val liked: Boolean = false,
+    val likeCount: Int = 0,
+    val commentCount: Int = 0,
     val thumbUrl: String?,
     val displayUrl: String?,
     val originalUrl: String?,
@@ -189,55 +194,25 @@ private data class CheckinEditDraft(
     val longitude: String,
     val note: String,
     val tags: String,
-    val visibility: String,
+    val visibility: String = "private",
 )
 
-private data class InteractionState(val liked: Boolean = false, val likeCount: Int = 0, val commentCount: Int = 0)
 private data class CommentItem(val id: String, val displayName: String, val body: String, val createdAt: String?)
-
-private data class MessageItem(
-    val id: String,
-    val kind: String,
-    val title: String,
-    val body: String,
-    val priority: String,
-    val createdAt: String?,
+private data class NotificationItem(val id: String, val title: String, val body: String, val readAt: String?, val createdAt: String?)
+private data class PersonItem(val id: Int, val displayName: String, val username: String?, val bio: String?, val following: Boolean)
+private data class AlbumItem(val id: String, val title: String, val itemCount: Int, val visibility: String)
+private data class ExportItem(val id: String, val status: String, val createdAt: String?, val downloadUrl: String?)
+private data class AuxiliaryState(
+    val tags: List<TagItem>,
+    val notifications: List<NotificationItem>,
+    val people: List<PersonItem>,
+    val albums: List<AlbumItem>,
+    val exports: List<ExportItem>,
 )
 
 private data class TagItem(
     val name: String,
     val count: Int = 0,
-    val source: String = "default",
-    val groupCode: String = "custom",
-    val slug: String? = null,
-)
-
-private data class TagGroupItem(
-    val id: String,
-    val title: String,
-    val description: String = "",
-    val sortOrder: Int = 0,
-    val tags: List<TagItem> = emptyList(),
-)
-
-private data class TagCatalog(
-    val groups: List<TagGroupItem> = emptyList(),
-    val total: Int = 0,
-)
-
-private data class AlbumItem(
-    val id: String,
-    val type: String,
-    val title: String,
-    val description: String,
-    val itemCount: Int,
-)
-
-private data class MapCellItem(
-    val id: String,
-    val scope: String,
-    val photoCount: Int,
-    val checkinCount: Int,
 )
 
 private data class AuthTokens(val accessToken: String, val refreshToken: String?)
@@ -249,7 +224,7 @@ internal data class UploadDraft(
     val longitude: String = "",
     val locationSource: String = "manual",
     val note: String = "",
-    val tags: String = "娃娃",
+    val tags: String = "",
     val visibility: String = "private",
 )
 
@@ -263,7 +238,6 @@ private data class BrowseFilters(
     val query: String = "",
     val tag: String = "",
     val place: String = "",
-    val source: String = "",
 )
 
 private data class DraftValidation(
@@ -276,42 +250,10 @@ private data class DraftValidation(
     val missingText: String,
 )
 
-private const val DEFAULT_API_BASE = "https://nunulo.lumokato.com"
+private val DEFAULT_API_BASE = BuildConfig.NUNULO_API_BASE_URL
 private const val AMAP_LOG_TAG = "NunuloAmapNative"
 private const val APP_LOG_TAG = "NunuloApp"
-private val FALLBACK_TAG_GROUPS = listOf(
-    TagGroupItem(
-        id = "type",
-        title = "类型",
-        description = "娃娃、努努、立牌、手办、周边等物品类型",
-        sortOrder = 10,
-        tags = listOf("娃娃", "努努", "立牌", "棉花娃娃", "手办", "周边").map { TagItem(name = it, groupCode = "type") },
-    ),
-    TagGroupItem(
-        id = "ip",
-        title = "角色/IP",
-        description = "作品、团体、角色和 IP 归属",
-        sortOrder = 20,
-        tags = listOf("BanG Dream!", "MyGO!!!!!", "Ave Mujica", "Roselia", "Poppin'Party", "Pastel＊Palettes")
-            .map { TagItem(name = it, groupCode = "ip") },
-    ),
-    TagGroupItem(
-        id = "scene",
-        title = "场景",
-        description = "出行、活动、展会、咖啡店等拍摄场景",
-        sortOrder = 30,
-        tags = listOf("出行", "活动", "咖啡店", "展会", "家里").map { TagItem(name = it, groupCode = "scene") },
-    ),
-    TagGroupItem(
-        id = "status",
-        title = "整理",
-        description = "补地点、补标签、待整理等维护状态",
-        sortOrder = 40,
-        tags = listOf("待整理", "补地点", "补标签").map { TagItem(name = it, groupCode = "status") },
-    ),
-)
-
-private object DollUi {
+private object NunuloUi {
     val Background = Color(0xFFF6FAFE)
     val Surface = Color(0xFFF6FAFE)
     val Paper = Color(0xFFFFFFFF)
@@ -354,12 +296,29 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
             .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
         val json = http.executeJson(request)
-        val user = parseAuthUser(json.getJSONObject("user"), fallbackUsage = 0L, fallbackQuota = 0L)
+        val user = parseAuthUser(json.getJSONObject("user"))
         val tokens = AuthTokens(
             accessToken = json.getString("access_token"),
-            refreshToken = json.optString("refresh_token").ifBlank { null },
+            refreshToken = json.getString("refresh_token"),
         )
         user to tokens
+    }
+
+    suspend fun register(apiBase: String, username: String, displayName: String, inviteCode: String, password: String): Pair<AuthUser, AuthTokens> = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("username", username.trim())
+            .put("display_name", displayName.trim())
+            .put("invite_code", inviteCode.trim())
+            .put("password", password)
+            .put("device_name", "Android App")
+            .put("device_type", "android")
+            .toString()
+        val request = Request.Builder()
+            .url(apiUrl(apiBase, "/api/auth/register"))
+            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        val json = http.executeJson(request)
+        parseAuthUser(json.getJSONObject("user")) to AuthTokens(json.getString("access_token"), json.getString("refresh_token"))
     }
 
     suspend fun me(apiBase: String, token: String): AuthUser = withContext(Dispatchers.IO) {
@@ -378,8 +337,8 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
         http.executeJson(request).getString("access_token")
     }
 
-    suspend fun listCheckins(apiBase: String, token: String): List<CheckinItem> = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/checkins?limit=120&offset=0", token).get().build()
+    suspend fun listCheckins(apiBase: String, token: String, scope: FeedScope = FeedScope.All): List<CheckinItem> = withContext(Dispatchers.IO) {
+        val request = authorizedBuilder(apiBase, checkinFeedPath(scope), token).get().build()
         val items = executeJson(request).getJSONArray("items")
         buildList {
             for (index in 0 until items.length()) {
@@ -388,38 +347,11 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
         }
     }
 
-    suspend fun listMessages(apiBase: String, token: String): List<MessageItem> = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/notifications?limit=50", token).get().build()
+    suspend fun listTags(apiBase: String, token: String): List<TagItem> = withContext(Dispatchers.IO) {
+        val request = authorizedBuilder(apiBase, "/api/tags", token).get().build()
         val items = executeJson(request).getJSONArray("items")
         buildList {
-            for (index in 0 until items.length()) add(parseMessage(items.getJSONObject(index)))
-        }
-    }
-
-    suspend fun markAllNotificationsRead(apiBase: String, token: String) = withContext(Dispatchers.IO) {
-        executeJson(authorizedBuilder(apiBase, "/api/notifications/read-all", token).post(ByteArray(0).toRequestBody()).build())
-    }
-
-    suspend fun tagCatalog(apiBase: String, token: String): TagCatalog = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/tags/catalog", token).get().build()
-        parseTagCatalog(executeJson(request))
-    }
-
-    suspend fun listAlbums(apiBase: String, token: String): List<AlbumItem> = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/albums", token).get().build()
-        val items = executeJson(request).getJSONArray("items")
-        buildList {
-            for (index in 0 until items.length()) add(parseAlbum(items.getJSONObject(index)))
-        }
-    }
-
-    suspend fun listMapCells(apiBase: String, token: String, scope: String): List<MapCellItem> = withContext(Dispatchers.IO) {
-        val request = authorizedBuilder(apiBase, "/api/map/cells?scope=$scope", token).get().build()
-        val json = executeJson(request)
-        val items = json.getJSONArray("items")
-        val responseScope = json.optString("scope", scope)
-        buildList {
-            for (index in 0 until items.length()) add(parseMapCell(items.getJSONObject(index), responseScope))
+            for (index in 0 until items.length()) add(parseTagItem(items.getJSONObject(index)))
         }
     }
 
@@ -444,8 +376,8 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
             .addFormDataPart("note", draft.note)
             .addFormDataPart("tags", draft.tags)
             .addFormDataPart("source", "android_capture")
-            .addFormDataPart("visibility", draft.visibility)
             .addFormDataPart("location_source", draft.locationSource)
+            .addFormDataPart("visibility", draft.visibility)
             .addFormDataPart("photo", media.filename, media.requestBody)
             .build()
         val request = authorizedBuilder(apiBase, "/api/checkins", token).post(body).build()
@@ -471,8 +403,8 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
             .put("note", draft.note.trim())
             .put("tags", draft.tags.trim())
             .put("source", record.source.ifBlank { "android_capture" })
-            .put("visibility", draft.visibility)
             .put("location_source", "manual")
+            .put("visibility", draft.visibility)
             .toString()
         val request = authorizedBuilder(apiBase, "/api/checkins/${record.id}", token)
             .patch(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
@@ -480,26 +412,103 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
         parseCheckin(executeJson(request))
     }
 
-    suspend fun interactions(apiBase: String, token: String, checkinId: String): InteractionState = withContext(Dispatchers.IO) {
-        val json = executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/interactions", token).get().build())
-        InteractionState(json.optBoolean("liked"), json.optInt("like_count"), json.optInt("comment_count"))
+    suspend fun setLike(apiBase: String, token: String, record: CheckinItem): CheckinItem = withContext(Dispatchers.IO) {
+        val requestBuilder = authorizedBuilder(apiBase, "/api/checkins/${record.id}/like", token)
+        val request = if (record.liked) requestBuilder.delete().build() else requestBuilder.post(ByteArray(0).toRequestBody(null)).build()
+        val interaction = executeJson(request)
+        record.copy(
+            liked = interaction.optBoolean("liked"),
+            likeCount = interaction.optInt("like_count"),
+            commentCount = interaction.optInt("comment_count"),
+        )
     }
 
-    suspend fun setLike(apiBase: String, token: String, checkinId: String, liked: Boolean): InteractionState = withContext(Dispatchers.IO) {
-        val builder = authorizedBuilder(apiBase, "/api/checkins/$checkinId/like", token)
-        val json = executeJson(if (liked) builder.post(ByteArray(0).toRequestBody()).build() else builder.delete().build())
-        InteractionState(json.optBoolean("liked"), json.optInt("like_count"))
-    }
-
-    suspend fun comments(apiBase: String, token: String, checkinId: String): List<CommentItem> = withContext(Dispatchers.IO) {
+    suspend fun listComments(apiBase: String, token: String, checkinId: String): List<CommentItem> = withContext(Dispatchers.IO) {
         val items = executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/comments", token).get().build()).getJSONArray("items")
-        buildList { for (index in 0 until items.length()) { val item = items.getJSONObject(index); add(CommentItem(item.getString("id"), item.optString("display_name", "用户"), item.optString("body"), item.nullableString("created_at"))) } }
+        buildList { for (index in 0 until items.length()) add(parseComment(items.getJSONObject(index))) }
     }
 
     suspend fun addComment(apiBase: String, token: String, checkinId: String, body: String): CommentItem = withContext(Dispatchers.IO) {
-        val payload = JSONObject().put("body", body).toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-        val item = executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/comments", token).post(payload).build())
-        CommentItem(item.getString("id"), item.optString("display_name", "我"), item.optString("body"), item.nullableString("created_at"))
+        val payload = JSONObject().put("body", body.trim()).toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        parseComment(executeJson(authorizedBuilder(apiBase, "/api/checkins/$checkinId/comments", token).post(payload).build()))
+    }
+
+    suspend fun listNotifications(apiBase: String, token: String): List<NotificationItem> = withContext(Dispatchers.IO) {
+        val items = executeJson(authorizedBuilder(apiBase, "/api/notifications?limit=100", token).get().build()).getJSONArray("items")
+        buildList { for (index in 0 until items.length()) add(parseNotification(items.getJSONObject(index))) }
+    }
+
+    suspend fun markNotificationsRead(apiBase: String, token: String) = withContext(Dispatchers.IO) {
+        executeJson(authorizedBuilder(apiBase, "/api/notifications/read-all", token).post(ByteArray(0).toRequestBody(null)).build())
+    }
+
+    suspend fun listPeople(apiBase: String, token: String): List<PersonItem> = withContext(Dispatchers.IO) {
+        val items = executeJson(authorizedBuilder(apiBase, "/api/users?limit=100", token).get().build()).getJSONArray("items")
+        buildList { for (index in 0 until items.length()) add(parsePerson(items.getJSONObject(index))) }
+    }
+
+    suspend fun setFollowing(apiBase: String, token: String, person: PersonItem): PersonItem = withContext(Dispatchers.IO) {
+        val builder = authorizedBuilder(apiBase, "/api/users/${person.id}/follow", token)
+        val request = if (person.following) builder.delete().build() else builder.post(ByteArray(0).toRequestBody(null)).build()
+        person.copy(following = executeJson(request).optBoolean("following"))
+    }
+
+    suspend fun blockPerson(apiBase: String, token: String, personId: Int) = withContext(Dispatchers.IO) {
+        executeJson(authorizedBuilder(apiBase, "/api/users/$personId/block", token).post(ByteArray(0).toRequestBody(null)).build())
+    }
+
+    suspend fun listAlbums(apiBase: String, token: String): List<AlbumItem> = withContext(Dispatchers.IO) {
+        val items = executeJson(authorizedBuilder(apiBase, "/api/albums", token).get().build()).getJSONArray("items")
+        buildList { for (index in 0 until items.length()) add(parseAlbum(items.getJSONObject(index))) }
+    }
+
+    suspend fun listExports(apiBase: String, token: String): List<ExportItem> = withContext(Dispatchers.IO) {
+        val items = executeJson(authorizedBuilder(apiBase, "/api/exports?limit=50", token).get().build()).getJSONArray("items")
+        buildList { for (index in 0 until items.length()) add(parseExport(items.getJSONObject(index))) }
+    }
+
+    suspend fun createExport(apiBase: String, token: String): ExportItem = withContext(Dispatchers.IO) {
+        parseExport(executeJson(authorizedBuilder(apiBase, "/api/exports", token).post(ByteArray(0).toRequestBody(null)).build()))
+    }
+
+    suspend fun downloadExport(context: Context, apiBase: String, token: String, record: ExportItem): Uri = withContext(Dispatchers.IO) {
+        val request = authorizedBuilder(apiBase, record.downloadUrl ?: "/api/exports/${record.id}/download", token).get().build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw ApiException(response.code, "导出下载失败（HTTP ${response.code}）")
+            val directory = File(context.cacheDir, "exports").apply { mkdirs() }
+            val target = File(directory, "nunulo-export-${record.id}.zip")
+            response.body.byteStream().use { input -> target.outputStream().use(input::copyTo) }
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
+        }
+    }
+
+    suspend fun createInvite(apiBase: String, token: String): String = withContext(Dispatchers.IO) {
+        val body = "{}".toRequestBody("application/json; charset=utf-8".toMediaType())
+        executeJson(authorizedBuilder(apiBase, "/api/invites", token).post(body).build()).getString("code")
+    }
+
+    suspend fun reportCheckin(apiBase: String, token: String, checkinId: String, reason: String) = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("target_type", "checkin")
+            .put("target_id", checkinId)
+            .put("reason", reason)
+            .toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        executeJson(authorizedBuilder(apiBase, "/api/reports", token).post(body).build())
+    }
+
+    suspend fun createAlbum(apiBase: String, token: String, title: String): AlbumItem = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+            .put("title", title.trim())
+            .put("description", "")
+            .put("visibility", "private")
+            .toString()
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        parseAlbum(executeJson(authorizedBuilder(apiBase, "/api/albums", token).post(body).build()))
+    }
+
+    suspend fun addAlbumItem(apiBase: String, token: String, albumId: String, checkinId: String): AlbumItem = withContext(Dispatchers.IO) {
+        parseAlbum(executeJson(authorizedBuilder(apiBase, "/api/albums/$albumId/checkins/$checkinId", token).post(ByteArray(0).toRequestBody(null)).build()))
     }
 
     suspend fun uploadAvatar(context: Context, apiBase: String, token: String, uri: Uri): AuthUser = withContext(Dispatchers.IO) {
@@ -547,19 +556,21 @@ private fun NunuloApp() {
     var refreshToken by rememberSaveable { mutableStateOf(prefs.getString("refreshToken", "") ?: "") }
     var currentUser by remember { mutableStateOf<AuthUser?>(null) }
     var records by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
-    var messages by remember { mutableStateOf<List<MessageItem>>(emptyList()) }
-    var tagCatalog by remember { mutableStateOf(TagCatalog(groups = FALLBACK_TAG_GROUPS)) }
+    var mineRecords by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
+    var feedScope by rememberSaveable { mutableStateOf(FeedScope.All.name) }
+    var notifications by remember { mutableStateOf<List<NotificationItem>>(emptyList()) }
+    var people by remember { mutableStateOf<List<PersonItem>>(emptyList()) }
     var albums by remember { mutableStateOf<List<AlbumItem>>(emptyList()) }
-    var personalMapCells by remember { mutableStateOf<List<MapCellItem>>(emptyList()) }
-    var worldMapCells by remember { mutableStateOf<List<MapCellItem>>(emptyList()) }
+    var exports by remember { mutableStateOf<List<ExportItem>>(emptyList()) }
+    var comments by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
+    var inviteCode by rememberSaveable { mutableStateOf("") }
+    var availableTags by remember { mutableStateOf<List<TagItem>>(emptyList()) }
     var draft by remember { mutableStateOf(UploadDraft()) }
     var avatarUri by remember { mutableStateOf<Uri?>(null) }
     var filters by remember { mutableStateOf(BrowseFilters()) }
     var pendingDeleteId by rememberSaveable { mutableStateOf("") }
     var selectedRecord by remember { mutableStateOf<CheckinItem?>(null) }
     var editingRecord by remember { mutableStateOf<CheckinItem?>(null) }
-    var interaction by remember { mutableStateOf(InteractionState()) }
-    var comments by remember { mutableStateOf<List<CommentItem>>(emptyList()) }
     var uploadPhase by rememberSaveable { mutableStateOf("idle") }
     var uploadProgress by rememberSaveable { mutableStateOf(0) }
     var message by rememberSaveable { mutableStateOf("准备记录今天的娃娃出行") }
@@ -682,11 +693,13 @@ private fun NunuloApp() {
         refreshToken = ""
         currentUser = null
         records = emptyList()
-        messages = emptyList()
-        tagCatalog = TagCatalog(groups = FALLBACK_TAG_GROUPS)
+        mineRecords = emptyList()
+        notifications = emptyList()
+        people = emptyList()
         albums = emptyList()
-        personalMapCells = emptyList()
-        worldMapCells = emptyList()
+        exports = emptyList()
+        comments = emptyList()
+        availableTags = emptyList()
         prefs.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
         activeTab = AppTab.Me.name
@@ -704,11 +717,24 @@ private fun NunuloApp() {
 
     suspend fun refreshLibraryState() {
         if (accessToken.isBlank()) return
-        tagCatalog = runCatching { runWithTokenRefresh { token -> api.tagCatalog(apiBase, token) } }
-            .getOrDefault(tagCatalog)
-        albums = runCatching { runWithTokenRefresh { token -> api.listAlbums(apiBase, token) } }.getOrDefault(albums)
-        personalMapCells = runCatching { runWithTokenRefresh { token -> api.listMapCells(apiBase, token, "personal") } }.getOrDefault(personalMapCells)
-        worldMapCells = runCatching { runWithTokenRefresh { token -> api.listMapCells(apiBase, token, "world") } }.getOrDefault(worldMapCells)
+        val state = runCatching {
+            runWithTokenRefresh { token ->
+                AuxiliaryState(
+                    tags = api.listTags(apiBase, token),
+                    notifications = api.listNotifications(apiBase, token),
+                    people = api.listPeople(apiBase, token),
+                    albums = api.listAlbums(apiBase, token),
+                    exports = api.listExports(apiBase, token),
+                )
+            }
+        }.getOrNull()
+        if (state != null) {
+            availableTags = state.tags
+            notifications = state.notifications
+            people = state.people
+            albums = state.albums
+            exports = state.exports
+        }
     }
 
     val avatarPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -742,12 +768,18 @@ private fun NunuloApp() {
         busy = true
         scope.launch {
             try {
-                val (user, items) = runWithTokenRefresh { token ->
-                    api.me(apiBase, token) to api.listCheckins(apiBase, token)
+                val (user, feedItems, ownItems) = runWithTokenRefresh { token ->
+                    val selectedScope = FeedScope.valueOf(feedScope)
+                    val selectedItems = api.listCheckins(apiBase, token, selectedScope)
+                    Triple(
+                        api.me(apiBase, token),
+                        selectedItems,
+                        if (selectedScope == FeedScope.Mine) selectedItems else api.listCheckins(apiBase, token, FeedScope.Mine),
+                    )
                 }
                 currentUser = user
-                records = items
-                messages = runCatching { runWithTokenRefresh { token -> api.listMessages(apiBase, token) } }.getOrDefault(emptyList())
+                records = feedItems
+                mineRecords = ownItems
                 refreshLibraryState()
                 pendingDeleteId = ""
                 message = "已同步 ${records.size} 条记录"
@@ -757,6 +789,25 @@ private fun NunuloApp() {
                 } else {
                     message = error.message ?: "同步失败"
                 }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun switchFeedScope(next: FeedScope) {
+        val previous = FeedScope.valueOf(feedScope)
+        feedScope = next.name
+        if (accessToken.isBlank()) return
+        busy = true
+        scope.launch {
+            try {
+                records = runWithTokenRefresh { token -> api.listCheckins(apiBase, token, next) }
+                if (next == FeedScope.Mine) mineRecords = records
+                message = "已切换到${next.label}动态"
+            } catch (error: Exception) {
+                feedScope = previous.name
+                message = error.message ?: "动态加载失败"
             } finally {
                 busy = false
             }
@@ -775,14 +826,37 @@ private fun NunuloApp() {
                     .apply()
                 persistTokens(tokens.accessToken, tokens.refreshToken.orEmpty())
                 password = ""
-                records = api.listCheckins(apiBase, tokens.accessToken)
-                messages = runCatching { api.listMessages(apiBase, tokens.accessToken) }.getOrDefault(emptyList())
+                records = api.listCheckins(apiBase, tokens.accessToken, FeedScope.All)
+                mineRecords = api.listCheckins(apiBase, tokens.accessToken, FeedScope.Mine)
+                feedScope = FeedScope.All.name
                 refreshLibraryState()
                 pendingDeleteId = ""
                 message = "欢迎回来，${user.displayName}"
                 activeTab = AppTab.Feed.name
             } catch (error: Exception) {
                 message = error.message ?: "登录失败"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun register(username: String, displayName: String, invite: String, newPassword: String) {
+        busy = true
+        scope.launch {
+            try {
+                val (user, tokens) = api.register(apiBase, username, displayName, invite, newPassword)
+                currentUser = user
+                loginName = username
+                persistTokens(tokens.accessToken, tokens.refreshToken.orEmpty())
+                records = api.listCheckins(apiBase, tokens.accessToken, FeedScope.All)
+                mineRecords = api.listCheckins(apiBase, tokens.accessToken, FeedScope.Mine)
+                feedScope = FeedScope.All.name
+                refreshLibraryState()
+                message = "测试账号已创建，欢迎 ${user.displayName}"
+                activeTab = AppTab.Feed.name
+            } catch (error: Exception) {
+                message = error.message ?: "注册失败"
             } finally {
                 busy = false
             }
@@ -863,9 +937,18 @@ private fun NunuloApp() {
                         scope.launch { uploadProgress = progress }
                     }
                 }
-                records = listOf(uploaded) + records.filterNot { it.id == uploaded.id }
+                mineRecords = listOf(uploaded) + mineRecords.filterNot { it.id == uploaded.id }
+                val selectedScope = FeedScope.valueOf(feedScope)
+                records = runCatching {
+                    runWithTokenRefresh { token -> api.listCheckins(apiBase, token, FeedScope.valueOf(feedScope)) }
+                }.getOrElse {
+                    if (shouldShowOwnUpload(selectedScope, uploaded.visibility)) {
+                        listOf(uploaded) + records.filterNot { it.id == uploaded.id }
+                    } else {
+                        records
+                    }
+                }
                 currentUser = runCatching { runWithTokenRefresh { token -> api.me(apiBase, token) } }.getOrNull() ?: currentUser
-                messages = runCatching { runWithTokenRefresh { token -> api.listMessages(apiBase, token) } }.getOrDefault(messages)
                 refreshLibraryState()
                 deleteCachedMedia(context, uploadDraft.photoUri)
                 clearPendingUpload(prefs)
@@ -902,8 +985,8 @@ private fun NunuloApp() {
             try {
                 runWithTokenRefresh { token -> api.deleteCheckin(apiBase, token, record.id) }
                 records = records.filterNot { it.id == record.id }
+                mineRecords = mineRecords.filterNot { it.id == record.id }
                 currentUser = runCatching { runWithTokenRefresh { token -> api.me(apiBase, token) } }.getOrNull() ?: currentUser
-                messages = runCatching { runWithTokenRefresh { token -> api.listMessages(apiBase, token) } }.getOrDefault(messages)
                 refreshLibraryState()
                 pendingDeleteId = ""
                 message = "已删除：${record.placeName}"
@@ -918,9 +1001,147 @@ private fun NunuloApp() {
     fun openRecord(record: CheckinItem) {
         selectedRecord = record
         scope.launch {
-            selectedRecord = runCatching { runWithTokenRefresh { token -> api.getCheckin(apiBase, token, record.id) } }.getOrDefault(record)
-            interaction = runCatching { runWithTokenRefresh { token -> api.interactions(apiBase, token, record.id) } }.getOrDefault(InteractionState())
-            comments = runCatching { runWithTokenRefresh { token -> api.comments(apiBase, token, record.id) } }.getOrDefault(emptyList())
+            val detail = runCatching { runWithTokenRefresh { token -> api.getCheckin(apiBase, token, record.id) } }.getOrDefault(record)
+            selectedRecord = detail
+            comments = runCatching { runWithTokenRefresh { token -> api.listComments(apiBase, token, record.id) } }.getOrDefault(emptyList())
+        }
+    }
+
+    fun toggleLike(record: CheckinItem) {
+        scope.launch {
+            try {
+                val updated = runWithTokenRefresh { token -> api.setLike(apiBase, token, record) }
+                records = records.map { if (it.id == updated.id) updated else it }
+                mineRecords = mineRecords.map { if (it.id == updated.id) updated else it }
+                if (selectedRecord?.id == updated.id) selectedRecord = updated
+            } catch (error: Exception) {
+                message = error.message ?: "互动失败"
+            }
+        }
+    }
+
+    fun addComment(record: CheckinItem, body: String) {
+        if (body.isBlank()) return
+        scope.launch {
+            try {
+                comments = comments + runWithTokenRefresh { token -> api.addComment(apiBase, token, record.id, body) }
+                val updated = record.copy(commentCount = record.commentCount + 1)
+                records = records.map { if (it.id == updated.id) updated else it }
+                mineRecords = mineRecords.map { if (it.id == updated.id) updated else it }
+                selectedRecord = updated
+            } catch (error: Exception) {
+                message = error.message ?: "评论失败"
+            }
+        }
+    }
+
+    fun reportRecord(record: CheckinItem) {
+        scope.launch {
+            try {
+                runWithTokenRefresh { token -> api.reportCheckin(apiBase, token, record.id, "Android 测试用户举报") }
+                message = "举报已提交给管理员"
+            } catch (error: Exception) {
+                message = error.message ?: "举报失败"
+            }
+        }
+    }
+
+    fun toggleFollow(person: PersonItem) {
+        scope.launch {
+            try {
+                val updated = runWithTokenRefresh { token -> api.setFollowing(apiBase, token, person) }
+                people = people.map { if (it.id == updated.id) updated else it }
+            } catch (error: Exception) {
+                message = error.message ?: "关注操作失败"
+            }
+        }
+    }
+
+    fun blockPerson(person: PersonItem) {
+        scope.launch {
+            try {
+                runWithTokenRefresh { token -> api.blockPerson(apiBase, token, person.id) }
+                people = people.filterNot { it.id == person.id }
+                records = records.filterNot { it.userId == person.id }
+                if (selectedRecord?.userId == person.id) selectedRecord = null
+                message = "已屏蔽 ${person.displayName}"
+            } catch (error: Exception) {
+                message = error.message ?: "屏蔽失败"
+            }
+        }
+    }
+
+    fun readAllNotifications() {
+        scope.launch {
+            runCatching { runWithTokenRefresh { token -> api.markNotificationsRead(apiBase, token) } }
+            notifications = notifications.map { it.copy(readAt = it.readAt ?: OffsetDateTime.now().toString()) }
+        }
+    }
+
+    fun createPersonalInvite() {
+        scope.launch {
+            try {
+                inviteCode = runWithTokenRefresh { token -> api.createInvite(apiBase, token) }
+                message = "个人邀请码已生成"
+            } catch (error: Exception) {
+                message = error.message ?: "邀请码生成失败"
+            }
+        }
+    }
+
+    fun createDataExport() {
+        scope.launch {
+            try {
+                val created = runWithTokenRefresh { token -> api.createExport(apiBase, token) }
+                exports = listOf(created) + exports.filterNot { it.id == created.id }
+                message = "个人数据导出已生成"
+            } catch (error: Exception) {
+                message = error.message ?: "导出失败"
+            }
+        }
+    }
+
+    fun downloadDataExport(record: ExportItem) {
+        scope.launch {
+            busy = true
+            try {
+                val uri = runWithTokenRefresh { token -> api.downloadExport(context, apiBase, token, record) }
+                val share = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(share, "保存或分享 Nunulo 数据导出"))
+                message = "导出文件已准备好"
+            } catch (error: Exception) {
+                message = error.message ?: "导出下载失败"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun createPersonalAlbum(title: String) {
+        scope.launch {
+            try {
+                val created = runWithTokenRefresh { token -> api.createAlbum(apiBase, token, title) }
+                albums = listOf(created) + albums
+                message = "合集 ${created.title} 已创建"
+            } catch (error: Exception) {
+                message = error.message ?: "合集创建失败"
+            }
+        }
+    }
+
+    fun addRecordToAlbum(record: CheckinItem, album: AlbumItem) {
+        scope.launch {
+            try {
+                val updated = runWithTokenRefresh { token -> api.addAlbumItem(apiBase, token, album.id, record.id) }
+                albums = albums.map { if (it.id == updated.id) updated else it }
+                message = "已加入 ${album.title}"
+            } catch (error: Exception) {
+                message = error.message ?: "加入合集失败"
+            }
         }
     }
 
@@ -930,6 +1151,7 @@ private fun NunuloApp() {
             try {
                 val updated = runWithTokenRefresh { token -> api.updateCheckin(apiBase, token, record, edit) }
                 records = records.map { if (it.id == updated.id) updated else it }
+                mineRecords = listOf(updated) + mineRecords.filterNot { it.id == updated.id }
                 selectedRecord = updated
                 editingRecord = null
                 refreshLibraryState()
@@ -950,14 +1172,19 @@ private fun NunuloApp() {
         Scaffold(
             bottomBar = {
                 Column(Modifier.fillMaxWidth().background(Color.White).navigationBarsPadding()) {
-                    Surface(color = Color.White, border = BorderStroke(0.5.dp, DollUi.Hairline), modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                    Surface(color = Color.White, border = BorderStroke(0.5.dp, NunuloUi.Hairline), modifier = Modifier.fillMaxWidth().height(56.dp)) {
                         Row(Modifier.fillMaxSize()) {
                             AppTab.entries.forEach { tab ->
                                 val selected = activeTab == tab.name
                                 Column(Modifier.weight(1f).fillMaxSize().clickable { activeTab = tab.name }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                    StitchTabIcon(tab, selected)
+                                    Box(contentAlignment = Alignment.TopEnd) {
+                                        StitchTabIcon(tab, selected)
+                                        if (tab == AppTab.Notifications) {
+                                            TabUnreadBadge(notifications.count { it.readAt == null })
+                                        }
+                                    }
                                     Spacer(Modifier.height(2.dp))
-                                    Text(tab.title, fontSize = 10.sp, lineHeight = 12.sp, color = if (selected) DollUi.Coral else DollUi.Ink, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                                    Text(tab.title, fontSize = 10.sp, lineHeight = 12.sp, color = if (selected) NunuloUi.Coral else NunuloUi.Ink, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                                 }
                             }
                         }
@@ -965,25 +1192,24 @@ private fun NunuloApp() {
                 }
             },
         ) { padding ->
-            Surface(color = DollUi.Background, modifier = Modifier.fillMaxSize()) {
+            Surface(color = NunuloUi.Background, modifier = Modifier.fillMaxSize()) {
                 Column(modifier = Modifier.padding(padding).fillMaxSize()) {
                     when (AppTab.valueOf(activeTab)) {
                         AppTab.Feed -> FeedScreen(
                             records = filterRecords(records, filters),
                             allRecords = records,
+                            scope = FeedScope.valueOf(feedScope),
                             filters = filters,
                             apiBase = apiBase,
                             api = api,
-                            pendingDeleteId = pendingDeleteId,
+                            onScopeChange = { switchFeedScope(it) },
                             onFiltersChange = { filters = it },
                             onPublish = { activeTab = AppTab.Publish.name },
-                            onDelete = { deleteRecord(it) },
                             onOpen = { openRecord(it) },
+                            onLike = { toggleLike(it) },
                         )
                         AppTab.Map -> MapScreen(
-                            records = filterRecords(records, filters),
-                            personalMapCells = personalMapCells,
-                            worldMapCells = worldMapCells,
+                            records = filterRecords(mineRecords, filters),
                             onPublish = { activeTab = AppTab.Publish.name },
                             onOpen = { openRecord(it) },
                         )
@@ -993,7 +1219,7 @@ private fun NunuloApp() {
                             uploadPhase = uploadPhase,
                             uploadProgress = uploadProgress,
                             uploadMessage = message,
-                            tagGroups = tagCatalog.groups.ifEmpty { FALLBACK_TAG_GROUPS },
+                            availableTags = availableTags,
                             onDraftChange = { draft = it },
                             onPick = { pickerLauncher.launch(arrayOf("image/jpeg", "image/png", "image/webp")) },
                             onCamera = { takePhoto() },
@@ -1001,9 +1227,12 @@ private fun NunuloApp() {
                             onClear = { clearUploadDraft() },
                             onUpload = { upload() },
                         )
-                        AppTab.Messages -> MessagesScreen(
-                            messages = messages,
-                            onReadAll = { scope.launch { runWithTokenRefresh { token -> api.markAllNotificationsRead(apiBase, token) }; messages = runWithTokenRefresh { token -> api.listMessages(apiBase, token) } } },
+                        AppTab.Notifications -> NotificationsScreen(
+                            notifications = notifications,
+                            people = people,
+                            onReadAll = { readAllNotifications() },
+                            onFollow = { toggleFollow(it) },
+                            onBlock = { blockPerson(it) },
                         )
                         AppTab.Me -> MeScreen(
                             apiBase = apiBase,
@@ -1011,21 +1240,29 @@ private fun NunuloApp() {
                             loginName = loginName,
                             password = password,
                             user = currentUser,
-                            records = records,
+                            records = mineRecords,
+                            albums = albums,
+                            exports = exports,
+                            inviteCode = inviteCode,
                             avatarUri = avatarUri,
                             busy = busy,
                             onLoginNameChange = { loginName = it },
                             onApiBaseChange = { apiBase = it },
                             onPasswordChange = { password = it },
                             onLogin = { login() },
+                            onRegister = { username, displayName, invite, newPassword -> register(username, displayName, invite, newPassword) },
                             onLogout = { logout() },
                             onPermissions = { requestCorePermissions() },
                             onPickAvatar = { avatarPickerLauncher.launch("image/*") },
                             onRefresh = { refreshProfileAndRecords() },
                             onOpenRecord = { openRecord(it) },
-                            onOpenPhotos = { filters = BrowseFilters(); activeTab = AppTab.Feed.name },
+                            onOpenPhotos = { filters = BrowseFilters(); switchFeedScope(FeedScope.Mine); activeTab = AppTab.Feed.name },
                             onOpenPlaces = { activeTab = AppTab.Map.name },
-                            onOpenTags = { filters = filters.copy(tag = rankedTags(records).firstOrNull()?.first.orEmpty()); activeTab = AppTab.Feed.name },
+                            onOpenTags = { filters = filters.copy(tag = rankedTags(mineRecords).firstOrNull()?.first.orEmpty()); switchFeedScope(FeedScope.Mine); activeTab = AppTab.Feed.name },
+                            onCreateInvite = { createPersonalInvite() },
+                            onCreateAlbum = { createPersonalAlbum(it) },
+                            onCreateExport = { createDataExport() },
+                            onDownloadExport = { downloadDataExport(it) },
                             message = message,
                         )
                     }
@@ -1046,17 +1283,19 @@ private fun NunuloApp() {
                         selectedRecord = null
                     } else pendingDeleteId = record.id
                 },
-                pendingDelete = pendingDeleteId == record.id,
-                interaction = interaction,
                 comments = comments,
-                onToggleLike = { scope.launch { interaction = runWithTokenRefresh { token -> api.setLike(apiBase, token, record.id, !interaction.liked) }.copy(commentCount = comments.size) } },
-                onComment = { body -> scope.launch { val added = runWithTokenRefresh { token -> api.addComment(apiBase, token, record.id, body) }; comments = comments + added; interaction = interaction.copy(commentCount = comments.size) } },
+                albums = albums,
+                onLike = { toggleLike(record) },
+                onComment = { addComment(record, it) },
+                onReport = { reportRecord(record) },
+                onAddToAlbum = { addRecordToAlbum(record, it) },
+                pendingDelete = pendingDeleteId == record.id,
             )
         }
         editingRecord?.let { record ->
             CheckinEditDialog(
                 record = record,
-                tagGroups = tagCatalog.groups.ifEmpty { FALLBACK_TAG_GROUPS },
+                availableTags = availableTags,
                 busy = busy,
                 onDismiss = { editingRecord = null },
                 onSave = { saveRecord(record, it) },
@@ -1070,7 +1309,7 @@ private fun TopStatusBar(user: AuthUser?, recordsCount: Int, message: String, bu
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(DollUi.Background)
+            .background(NunuloUi.Background)
             .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1080,17 +1319,17 @@ private fun TopStatusBar(user: AuthUser?, recordsCount: Int, message: String, bu
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(listOf(DollUi.CoralSoft, DollUi.BlueSoft))),
+                        .background(Brush.linearGradient(listOf(NunuloUi.CoralSoft, NunuloUi.BlueSoft))),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("N", color = DollUi.Coral, fontWeight = FontWeight.Black)
+                    Text("N", color = NunuloUi.Coral, fontWeight = FontWeight.Black)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("Nunulo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = DollUi.Ink)
+                    Text("Nunulo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = NunuloUi.Ink)
                     Text(
-                        user?.let { "${it.displayName} 的行程索引 · $recordsCount 张" } ?: "私人照片地图日志",
-                        color = DollUi.Muted,
+                        user?.let { "${it.displayName} 的照片动态 · $recordsCount 张" } ?: "邀请制多人照片测试",
+                        color = NunuloUi.Muted,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1100,7 +1339,7 @@ private fun TopStatusBar(user: AuthUser?, recordsCount: Int, message: String, bu
             TextButton(onClick = onRefresh, enabled = !busy) { Text(if (busy) "同步中" else "同步") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            TopIndexPill("照片", recordsCount.toString(), DollUi.CoralSoft, DollUi.Coral, Modifier.weight(1f))
+            TopIndexPill("照片", recordsCount.toString(), NunuloUi.CoralSoft, NunuloUi.Coral, Modifier.weight(1f))
             StatusPill(text = message, busy = busy, modifier = Modifier.weight(2f))
         }
     }
@@ -1119,7 +1358,7 @@ private fun TopIndexPill(label: String, value: String, background: Color, foregr
     ) {
         Text(value, color = foreground, fontWeight = FontWeight.Black, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
         Spacer(Modifier.width(5.dp))
-        Text(label, color = DollUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+        Text(label, color = NunuloUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 1)
     }
 }
 
@@ -1129,7 +1368,7 @@ private fun StatusPill(text: String, busy: Boolean, modifier: Modifier = Modifie
         modifier = modifier
             .height(36.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(if (busy) DollUi.AmberSoft else DollUi.GreenSoft)
+            .background(if (busy) NunuloUi.AmberSoft else NunuloUi.GreenSoft)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1137,25 +1376,25 @@ private fun StatusPill(text: String, busy: Boolean, modifier: Modifier = Modifie
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (busy) DollUi.Amber else DollUi.Green),
+                .background(if (busy) NunuloUi.Amber else NunuloUi.Green),
         )
         Spacer(Modifier.width(8.dp))
-        Text(text, color = DollUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, color = NunuloUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
 private fun JournalCard(
     modifier: Modifier = Modifier,
-    containerColor: Color = DollUi.Paper,
-    radius: Dp = DollUi.CardRadius,
+    containerColor: Color = NunuloUi.Paper,
+    radius: Dp = NunuloUi.CardRadius,
     content: @Composable () -> Unit,
 ) {
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(radius),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, DollUi.Hairline),
+        border = BorderStroke(1.dp, NunuloUi.Hairline),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) { content() }
 }
@@ -1166,20 +1405,34 @@ private fun StitchTabIcon(tab: AppTab, selected: Boolean) {
         AppTab.Feed -> if (selected) Icons.Filled.Home else Icons.Outlined.Home
         AppTab.Map -> if (selected) Icons.Filled.Map else Icons.Outlined.Map
         AppTab.Publish -> if (selected) Icons.Filled.AddCircle else Icons.Outlined.AddCircleOutline
-        AppTab.Messages -> if (selected) Icons.Filled.ChatBubble else Icons.Outlined.ChatBubbleOutline
+        AppTab.Notifications -> if (selected) Icons.Filled.Notifications else Icons.Outlined.NotificationsNone
         AppTab.Me -> if (selected) Icons.Filled.Person else Icons.Outlined.PersonOutline
     }
     Icon(
         imageVector = image,
         contentDescription = tab.title,
-        tint = if (selected) DollUi.Coral else DollUi.Ink,
+        tint = if (selected) NunuloUi.Coral else NunuloUi.Ink,
         modifier = Modifier.size(24.dp),
     )
 }
 
 @Composable
+private fun TabUnreadBadge(count: Int) {
+    if (count <= 0) return
+    Surface(color = NunuloUi.Danger, contentColor = Color.White, shape = CircleShape) {
+        Text(
+            if (count > 99) "99+" else count.toString(),
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+            fontSize = 9.sp,
+            lineHeight = 11.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
 private fun StitchChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(modifier = Modifier.clickable(onClick = onClick), color = if (selected) DollUi.Coral else DollUi.Paper, contentColor = if (selected) Color.White else DollUi.Ink, shape = RoundedCornerShape(12.dp), border = if (selected) null else BorderStroke(1.dp, DollUi.Hairline)) {
+    Surface(modifier = Modifier.clickable(onClick = onClick), color = if (selected) NunuloUi.Coral else NunuloUi.Paper, contentColor = if (selected) Color.White else NunuloUi.Ink, shape = RoundedCornerShape(12.dp), border = if (selected) null else BorderStroke(1.dp, NunuloUi.Hairline)) {
         Text(label, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp), fontSize = 12.sp, lineHeight = 16.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
     }
 }
@@ -1187,45 +1440,54 @@ private fun StitchChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun FeedScreen(
     records: List<CheckinItem>, allRecords: List<CheckinItem>, filters: BrowseFilters,
-    apiBase: String, api: NunuloApi, pendingDeleteId: String,
-    onFiltersChange: (BrowseFilters) -> Unit, onPublish: () -> Unit, onDelete: (CheckinItem) -> Unit, onOpen: (CheckinItem) -> Unit,
+    scope: FeedScope,
+    apiBase: String, api: NunuloApi,
+    onScopeChange: (FeedScope) -> Unit,
+    onFiltersChange: (BrowseFilters) -> Unit, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit,
+    onLike: (CheckinItem) -> Unit,
 ) {
-    var feedMode by rememberSaveable { mutableStateOf("发现") }
-    val visible = when (feedMode) {
-        "关注" -> records.filter { it.visibility == "friends" || it.visibility == "public" }
-        "类别" -> if (filters.tag.isBlank()) records else filterRecords(allRecords, filters)
-        else -> records
-    }
-    val rows = visible.chunked(2)
+    val tags = rankedTags(allRecords).map { it.first }
+    val places = allRecords.map { it.placeName }.filter { it.isNotBlank() }.distinct().sorted()
+    val rows = records.chunked(2)
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 8.dp)) {
         stickyHeader {
-            Surface(color = DollUi.Surface, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    listOf("发现", "关注", "类别").forEach { tab ->
-                        TextButton(onClick = { feedMode = tab }, modifier = Modifier.weight(1f)) {
-                            Text(tab, color = if (feedMode == tab) DollUi.Coral else DollUi.Muted, fontWeight = if (feedMode == tab) FontWeight.Bold else FontWeight.Normal)
-                        }
-                    }
+            Surface(color = NunuloUi.Surface, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("照片动态", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onPublish) { Text("登记") }
                 }
             }
         }
-        if (feedMode == "类别") {
-            item {
-                LazyRow(contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(rankedTags(allRecords).take(12)) { pair ->
-                        StitchChip(pair.first, filters.tag == pair.first) { onFiltersChange(filters.copy(tag = pair.first)) }
+        item {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(FeedScope.entries) { item ->
+                        FilterChip(selected = scope == item, onClick = { onScopeChange(item) }, label = { Text(item.label) })
                     }
                 }
+                BrowseFilterPanel(filters = filters, tags = tags, places = places, onFiltersChange = onFiltersChange)
+                RouteIndexCard(records = allRecords, visibleCount = records.size, filters = filters, placesCount = places.size, tagsCount = tags.size)
             }
         }
-        if (visible.isEmpty()) item { Box(Modifier.padding(12.dp)) { EmptyState("暂无照片", "登记第一张照片后会显示在这里。") } }
+        if (allRecords.isEmpty()) item { Box(Modifier.padding(12.dp)) { FirstRecordCard(onPublish) } }
+        else if (records.isEmpty()) item { Box(Modifier.padding(12.dp)) { EmptyState("没有匹配的照片", "调整搜索或清除筛选后再试。") } }
         items(rows, key = { it.joinToString("|") { record -> record.id } }) { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 row.forEach { record ->
-                    Box(Modifier.weight(1f).clickable { onOpen(record) }) {
-                        RemoteImage(url = record.displayUrl ?: record.thumbUrl, apiBase = apiBase, api = api, aspect = 0.82f)
-                        Surface(modifier = Modifier.align(Alignment.BottomStart).padding(6.dp), color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(4.dp)) {
-                            Text(record.tags.firstOrNull()?.let { "#$it" } ?: record.placeName, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), maxLines = 1)
+                    Column(Modifier.weight(1f).background(Color.White)) {
+                        Box(Modifier.fillMaxWidth().clickable { onOpen(record) }) {
+                            RemoteImage(url = record.displayUrl ?: record.thumbUrl, apiBase = apiBase, api = api, aspect = 0.82f)
+                            Surface(modifier = Modifier.align(Alignment.BottomStart).padding(6.dp), color = Color.Black.copy(alpha = 0.6f), shape = RoundedCornerShape(4.dp)) {
+                                Text(record.authorName, color = Color.White, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp), maxLines = 1)
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(record.placeName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(visibilityLabel(record.visibility), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { onLike(record) }) { Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}") }
+                            TextButton(onClick = { onOpen(record) }) { Text("评 ${record.commentCount}") }
                         }
                     }
                 }
@@ -1237,38 +1499,19 @@ private fun FeedScreen(
 }
 
 @Composable
-private fun MapScreen(records: List<CheckinItem>, personalMapCells: List<MapCellItem>, worldMapCells: List<MapCellItem>, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
-    var scope by rememberSaveable { mutableStateOf("世界地图") }
-    var filter by rememberSaveable { mutableStateOf("全部") }
-    val visible = when (filter) {
-        "关注" -> records.filter { it.visibility == "friends" || it.visibility == "public" }
-        "类别" -> records.filter { it.tags.any(::looksLikeCollectionTag) }
-        else -> records
-    }
+private fun MapScreen(records: List<CheckinItem>, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        AmapNativeMap(records = visible, world = scope == "世界地图", modifier = Modifier.fillMaxSize(), onOpen = onOpen)
-        Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(color = Color.White.copy(alpha = 0.96f), shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, DollUi.Hairline)) {
-                Row(Modifier.height(42.dp)) {
-                    listOf("世界地图", "个人地图").forEach { item ->
-                        Box(modifier = Modifier.weight(1f).height(42.dp).clickable { scope = item }, contentAlignment = Alignment.Center) {
-                            Text(item, textAlign = TextAlign.Center, color = if (scope == item) DollUi.Coral else DollUi.Ink, fontWeight = if (scope == item) FontWeight.Bold else FontWeight.Normal)
-                            if (scope == item) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp).background(DollUi.Coral))
-                        }
-                    }
-                }
-            }
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(listOf("全部", "关注", "类别")) { item -> StitchChip(item, filter == item) { filter = item } }
-            }
+        AmapNativeMap(records = records, modifier = Modifier.fillMaxSize(), onOpen = onOpen)
+        Surface(modifier = Modifier.align(Alignment.TopCenter).padding(12.dp), color = Color.White.copy(alpha = 0.96f), shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, NunuloUi.Hairline)) {
+            Text("我的照片地点", modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontWeight = FontWeight.Bold)
         }
-        Surface(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(), color = Color.White.copy(alpha = 0.97f), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp), border = BorderStroke(0.5.dp, DollUi.Hairline)) {
+        Surface(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(), color = Color.White.copy(alpha = 0.97f), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp), border = BorderStroke(0.5.dp, NunuloUi.Hairline)) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(scope, fontWeight = FontWeight.Bold)
-                    Text("${visible.size} 个记录地点", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("个人照片地图", fontWeight = FontWeight.Bold)
+                    Text("${records.size} 个记录地点", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                Surface(color = DollUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPublish)) {
+                Surface(color = NunuloUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPublish)) {
                     Text("在这里登记", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                 }
             }
@@ -1277,56 +1520,42 @@ private fun MapScreen(records: List<CheckinItem>, personalMapCells: List<MapCell
 }
 
 @Composable
-private fun FeedTopTabs(selected: String, onSelect: (String) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        items(listOf("发现", "关注", "类别")) { tab ->
-            FilterChip(selected = selected == tab, onClick = { onSelect(tab) }, label = { Text(tab) })
+private fun NotificationsScreen(
+    notifications: List<NotificationItem>,
+    people: List<PersonItem>,
+    onReadAll: () -> Unit,
+    onFollow: (PersonItem) -> Unit,
+    onBlock: (PersonItem) -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            SectionHeader("消息", "真实互动与测试成员", onReadAll, "全部已读")
         }
-    }
-}
-
-@Composable
-private fun MapTopTabs(selected: String, onSelect: (String) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        items(listOf("全部", "关注", "类别")) { tab ->
-            FilterChip(selected = selected == tab, onClick = { onSelect(tab) }, label = { Text(tab) })
+        if (notifications.isEmpty()) item { EmptyState("还没有消息", "点赞、评论和新的关注会显示在这里。") }
+        items(notifications, key = { it.id }) { notice ->
+            JournalCard(containerColor = if (notice.readAt == null) NunuloUi.CoralSoft else NunuloUi.Paper) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(notice.title, fontWeight = FontWeight.Bold)
+                    Text(notice.body, color = NunuloUi.Slate)
+                    Text(shortDate(notice.createdAt), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
-    }
-}
-
-@Composable
-private fun MapScopeSummary(personalCells: List<MapCellItem>, worldCells: List<MapCellItem>, visibleRecords: Int) {
-    JournalCard(containerColor = DollUi.Surface) {
-        Row(Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CompactStat("个人地图", personalCells.size.toString(), Modifier.weight(1f))
-            CompactStat("世界地图", worldCells.size.toString(), Modifier.weight(1f))
-            CompactStat("当前筛选", visibleRecords.toString(), Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun CompactStat(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.clip(RoundedCornerShape(10.dp)).background(DollUi.PaperTint).padding(horizontal = 9.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(value, color = DollUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-        Text(label, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun CategoryRankingCard(records: List<CheckinItem>, selectedTag: String, onSelectTag: (String) -> Unit) {
-    val tags = rankedTags(records).take(8)
-    JournalCard(containerColor = DollUi.Surface) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("角色 / IP 排行", color = DollUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleSmall)
-            if (tags.isEmpty()) {
-                Text("有分类标签后会自动生成排行。", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
-            } else {
-                tags.forEachIndexed { index, pair ->
-                    RankingRow(index = index + 1, tag = pair.first, count = pair.second, selected = selectedTag == pair.first, onClick = { onSelectTag(pair.first) })
+        item { Text("测试成员", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+        if (people.isEmpty()) item { EmptyState("还没有其他成员", "邀请好友注册后，可以在这里关注。") }
+        items(people, key = { it.id }) { person ->
+            JournalCard {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(42.dp).clip(CircleShape).background(NunuloUi.GreenSoft), contentAlignment = Alignment.Center) { Text(person.displayName.take(1), color = NunuloUi.Green, fontWeight = FontWeight.Black) }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(person.displayName, fontWeight = FontWeight.Bold)
+                        Text(person.bio ?: person.username?.let { "@$it" } ?: "测试成员", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Button(onClick = { onFollow(person) }) { Text(if (person.following) "已关注" else "关注") }
+                        TextButton(onClick = { onBlock(person) }) { Text("屏蔽", color = NunuloUi.Danger) }
+                    }
                 }
             }
         }
@@ -1334,48 +1563,19 @@ private fun CategoryRankingCard(records: List<CheckinItem>, selectedTag: String,
 }
 
 @Composable
-private fun RankingRow(index: Int, tag: String, count: Int, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (selected) DollUi.CoralSoft else DollUi.PaperTint).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(index.toString(), color = DollUi.Coral, fontWeight = FontWeight.Black, modifier = Modifier.width(24.dp))
-        Text(tag, color = DollUi.Ink, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("$count 张", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-@Composable
-private fun PhotoFeedTile(record: CheckinItem, apiBase: String, api: NunuloApi, modifier: Modifier = Modifier, tall: Boolean) {
-    JournalCard(modifier = modifier, containerColor = DollUi.Surface, radius = 12.dp) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))) {
-                RemoteImage(url = record.displayUrl ?: record.thumbUrl, apiBase = apiBase, api = api, aspect = if (tall) 0.82f else 1.05f)
-            }
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(record.placeName.ifBlank { "未命名地点" }, color = DollUi.Ink, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(shortDate(record.takenAt ?: record.createdAt), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                val tag = record.tags.firstOrNull().orEmpty()
-                if (tag.isNotBlank()) Text("#$tag", color = DollUi.Blue, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String, uploadProgress: Int, uploadMessage: String, tagGroups: List<TagGroupItem>, onDraftChange: (UploadDraft) -> Unit, onPick: () -> Unit, onCamera: () -> Unit, onLocation: () -> Unit, onClear: () -> Unit, onUpload: () -> Unit) {
+private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String, uploadProgress: Int, uploadMessage: String, availableTags: List<TagItem>, onDraftChange: (UploadDraft) -> Unit, onPick: () -> Unit, onCamera: () -> Unit, onLocation: () -> Unit, onClear: () -> Unit, onUpload: () -> Unit) {
     val validation = validateDraft(draft)
     fun toggle(tag: String) = onDraftChange(draft.copy(tags = toggleTag(draft.tags, tag)))
     LazyColumn(Modifier.fillMaxSize().background(Color.White), contentPadding = PaddingValues(bottom = 20.dp)) {
         item { PhotoPickerCard(uri = draft.photoUri, onPick = onPick, onCamera = onCamera) }
         item {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("登记", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = DollUi.Ink)
+                Text("登记", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = NunuloUi.Ink)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(draft.placeName, { onDraftChange(draft.copy(placeName = it)) }, label = { Text("地点") }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(4.dp))
                     Spacer(Modifier.width(8.dp))
-                    Surface(shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, DollUi.Hairline), color = Color.White, modifier = Modifier.height(56.dp).clickable(onClick = onLocation)) {
-                        Box(Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text("定位", color = DollUi.Coral, fontWeight = FontWeight.Bold) }
+                    Surface(shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, NunuloUi.Hairline), color = Color.White, modifier = Modifier.height(56.dp).clickable(onClick = onLocation)) {
+                        Box(Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) { Text("定位", color = NunuloUi.Coral, fontWeight = FontWeight.Bold) }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1400,81 +1600,35 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
                 }
                 Text(
                     if (draft.locationSource == "device_location") "坐标来自设备定位，可手工修正" else "可直接填写坐标，或点击定位自动获取",
-                    color = DollUi.Muted,
+                    color = NunuloUi.Muted,
                     style = MaterialTheme.typography.bodySmall,
                 )
-                PublishTagSelector(tagGroups, parseDraftTags(draft.tags), ::toggle)
+                PublishTagSelector(tags = availableTags, value = draft.tags, onValueChange = { onDraftChange(draft.copy(tags = it)) }, onToggle = ::toggle)
                 OutlinedTextField(draft.note, { onDraftChange(draft.copy(note = it)) }, label = { Text("备注") }, modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp), shape = RoundedCornerShape(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("本阶段仅保存为私密记录", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onClear, enabled = !busy && draft.photoUri != null) { Text("清除草稿") }
-                }
-                PublishReadinessCard(validation, draft.visibility)
-                if (busy || uploadPhase == "failed") UploadPhaseBar(uploadPhase, busy, uploadProgress, uploadMessage)
-                Surface(color = if (!busy && validation.ready) DollUi.Coral else DollUi.Placeholder, shape = RoundedCornerShape(4.dp), modifier = Modifier.fillMaxWidth().height(48.dp).clickable(enabled = !busy && validation.ready, onClick = onUpload)) {
-                    Box(contentAlignment = Alignment.Center) { Text(if (busy) "上传中" else "登记", color = if (!busy && validation.ready) Color.White else DollUi.Muted, fontWeight = FontWeight.Bold) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MessagesScreen(messages: List<MessageItem>, onReadAll: () -> Unit) {
-    var mode by rememberSaveable { mutableStateOf("全部") }
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
-        stickyHeader {
-            Surface(color = DollUi.Surface, modifier = Modifier.fillMaxWidth(), border = BorderStroke(0.5.dp, DollUi.Hairline)) {
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("消息", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); TextButton(onClick = onReadAll) { Text("全部已读") } }
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(listOf("全部", "互动", "关注", "系统")) { item -> StitchChip(item, mode == item) { mode = item } }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("谁可以看到", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf("private", "followers", "public")) { value ->
+                            FilterChip(
+                                selected = draft.visibility == value,
+                                onClick = { onDraftChange(draft.copy(visibility = value)) },
+                                label = { Text(visibilityLabel(value)) },
+                            )
+                        }
                     }
                 }
-            }
-        }
-        if (messages.isEmpty()) item { MessageLine("暂无消息", "互动、关注和系统通知会显示在这里", DollUi.BlueSoft, DollUi.Blue) }
-        items(messages) { item ->
-            val colors = messageColors(item.kind, item.priority)
-            MessageLine(item.title, item.body, colors.first, colors.second)
-        }
-    }
-}
-
-@Composable
-private fun MessageLine(title: String, subtitle: String, background: Color, foreground: Color) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(44.dp).clip(CircleShape).background(DollUi.PaperTint), contentAlignment = Alignment.Center) { Text(title.take(1), color = DollUi.Muted, fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(subtitle, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-@Composable
-private fun MessageRow(title: String, subtitle: String, background: Color, foreground: Color) {
-    JournalCard(containerColor = DollUi.Surface) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(CircleShape).background(background), contentAlignment = Alignment.Center) {
-                Text(title.take(1), color = foreground, fontWeight = FontWeight.Black)
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, color = DollUi.Ink, fontWeight = FontWeight.Black)
-                Text(subtitle, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("非本人查看时位置会降低精度", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClear, enabled = !busy && draft.photoUri != null) { Text("清除草稿") }
+                }
+                PublishReadinessCard(validation)
+                if (busy || uploadPhase == "failed") UploadPhaseBar(uploadPhase, busy, uploadProgress, uploadMessage)
+                Surface(color = if (!busy && validation.ready) NunuloUi.Coral else NunuloUi.Placeholder, shape = RoundedCornerShape(4.dp), modifier = Modifier.fillMaxWidth().height(48.dp).clickable(enabled = !busy && validation.ready, onClick = onUpload)) {
+                    Box(contentAlignment = Alignment.Center) { Text(if (busy) "上传中" else "登记", color = if (!busy && validation.ready) Color.White else NunuloUi.Muted, fontWeight = FontWeight.Bold) }
+                }
             }
         }
     }
-}
-
-private fun messageColors(kind: String, priority: String): Pair<Color, Color> = when {
-    priority == "high" -> DollUi.AmberSoft to DollUi.Amber
-    kind == "photo" -> DollUi.CoralSoft to DollUi.Coral
-    kind == "storage" -> DollUi.GreenSoft to DollUi.Green
-    kind == "profile" -> DollUi.BlueSoft to DollUi.Blue
-    else -> DollUi.PaperTint to DollUi.Slate
 }
 
 @Composable
@@ -1490,11 +1644,11 @@ private fun AvatarView(uri: Uri?, imageUrl: String?, apiBase: String, api: Nunul
     }
     val displayBitmap = bitmap ?: remoteBitmap
     Box(
-        Modifier.size(80.dp).clip(CircleShape).background(Brush.linearGradient(listOf(DollUi.CoralSoft, DollUi.BlueSoft))).clickable(onClick = onClick),
+        Modifier.size(80.dp).clip(CircleShape).background(Brush.linearGradient(listOf(NunuloUi.CoralSoft, NunuloUi.BlueSoft))).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (displayBitmap == null) {
-            Text(label, color = DollUi.Coral, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
+            Text(label, color = NunuloUi.Coral, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
         } else {
             Image(bitmap = displayBitmap.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
@@ -1507,39 +1661,59 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier = Modif
         modifier = modifier.padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(value, color = DollUi.Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-        Text(label, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+        Text(value, color = NunuloUi.Ink, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+        Text(label, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
-private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, avatarUri: Uri?, apiBase: String, api: NunuloApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onApiBaseChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, message: String) {
+private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, albums: List<AlbumItem>, exports: List<ExportItem>, inviteCode: String, avatarUri: Uri?, apiBase: String, api: NunuloApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onApiBaseChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onRegister: (String, String, String, String) -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, onCreateInvite: () -> Unit, onCreateAlbum: (String) -> Unit, onCreateExport: () -> Unit, onDownloadExport: (ExportItem) -> Unit, message: String) {
     val places = records.map { it.placeName }.filter { it.isNotBlank() }.distinct().size
     val tags = records.flatMap { it.tags }.distinct().size
     if (user == null) {
+        var registerMode by rememberSaveable { mutableStateOf(false) }
+        var registerName by rememberSaveable { mutableStateOf("") }
+        var displayName by rememberSaveable { mutableStateOf("") }
+        var registerInvite by rememberSaveable { mutableStateOf("") }
+        var registerPassword by rememberSaveable { mutableStateOf("") }
         Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center) {
-            Text("登录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(if (registerMode) "邀请注册" else "登录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            OutlinedTextField(loginName, onLoginNameChange, label = { Text("邮箱或用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            if (registerMode) {
+                OutlinedTextField(registerInvite, { registerInvite = it }, label = { Text("邀请码") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(registerName, { registerName = it }, label = { Text("用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(displayName, { displayName = it }, label = { Text("显示名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            } else {
+                OutlinedTextField(loginName, onLoginNameChange, label = { Text("邮箱或用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            }
             Spacer(Modifier.height(10.dp))
             if (BuildConfig.DEBUG) {
                 OutlinedTextField(apiBase, onApiBaseChange, label = { Text("调试 API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Spacer(Modifier.height(10.dp))
             }
-            OutlinedTextField(password, onPasswordChange, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
+            OutlinedTextField(if (registerMode) registerPassword else password, if (registerMode) ({ registerPassword = it }) else onPasswordChange, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
             Spacer(Modifier.height(14.dp))
-            Button(onClick = onLogin, enabled = !busy && loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("登录") }
+            Button(onClick = { if (registerMode) onRegister(registerName, displayName, registerInvite, registerPassword) else onLogin() }, enabled = !busy && if (registerMode) registerName.isNotBlank() && registerInvite.isNotBlank() && registerPassword.length >= 8 else loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "创建测试账号" else "登录") }
+            TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "已有账号，返回登录" else "使用邀请码注册") }
         }
         return
     }
+    var albumTitle by rememberSaveable { mutableStateOf("") }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 AvatarView(uri = avatarUri, imageUrl = user.avatarUrl, apiBase = apiBase, api = api, label = user.displayName.take(1), onClick = onPickAvatar)
                 Spacer(Modifier.height(8.dp))
                 Text(user.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(user.username ?: "记录和收藏我的娃娃足迹", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                Text(user.username ?: "记录和收藏我的娃娃足迹", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                 TextButton(onClick = onPickAvatar) { Text("编辑资料") }
+                Text(
+                    "已使用 ${formatBytes(user.storageUsageBytes)} / ${formatBytes(user.storageQuotaBytes)}",
+                    color = NunuloUi.Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     ProfileStat("照片", records.size.toString(), Modifier.weight(1f).clickable(onClick = onOpenPhotos))
                     ProfileStat("地点", places.toString(), Modifier.weight(1f).clickable(onClick = onOpenPlaces))
@@ -1552,6 +1726,75 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
                 ProfileMenuRow("个人地图", places.toString(), onOpenPlaces)
                 ProfileMenuRow("我的照片", records.size.toString(), onOpenPhotos)
                 ProfileMenuRow("标签浏览", tags.toString(), onOpenTags)
+                ProfileMenuRow("邀请测试成员", if (inviteCode.isBlank()) "生成" else inviteCode, onCreateInvite)
+                ProfileMenuRow("重新同步数据", "同步", onRefresh)
+                ProfileMenuRow("检查定位权限", "检查", onPermissions)
+            }
+        }
+        item {
+            Text(message, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("我的合集", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = albumTitle,
+                        onValueChange = { albumTitle = it.take(160) },
+                        label = { Text("新合集名称") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                    )
+                    Button(
+                        onClick = {
+                            val title = albumTitle.trim()
+                            if (title.isNotEmpty()) {
+                                onCreateAlbum(title)
+                                albumTitle = ""
+                            }
+                        },
+                        enabled = !busy && albumTitle.isNotBlank(),
+                    ) { Text("创建") }
+                }
+                if (albums.isEmpty()) {
+                    Text("还没有合集，可创建后在照片详情中加入。", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    albums.forEach { album ->
+                        JournalCard {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(album.title, fontWeight = FontWeight.Bold)
+                                    Text(visibilityLabel(album.visibility), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("${album.itemCount} 张", color = NunuloUi.Coral, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("个人数据导出", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onCreateExport, enabled = !busy) { Text("生成新导出") }
+                }
+                Text("导出包含记录清单与原图，用于个人备份和迁移。", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                if (exports.isEmpty()) {
+                    Text("还没有可下载的导出。", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    exports.forEach { record ->
+                        JournalCard(modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { onDownloadExport(record) }) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(shortDate(record.createdAt), fontWeight = FontWeight.Bold)
+                                    Text(record.status, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("下载", color = NunuloUi.Coral, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             }
         }
         item {
@@ -1564,7 +1807,7 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
                 Spacer(Modifier.height(2.dp))
             }
         }
-        item { TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth().padding(12.dp)) { Text("退出登录", color = DollUi.Muted) } }
+        item { TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth().padding(12.dp)) { Text("退出登录", color = NunuloUi.Muted) } }
     }
 }
 
@@ -1572,7 +1815,7 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
 private fun ProfileMenuRow(title: String, value: String, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onClick).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, modifier = Modifier.weight(1f))
-        Text(value, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+        Text(value, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -1580,8 +1823,8 @@ private fun ProfileMenuRow(title: String, value: String, onClick: () -> Unit) {
 private fun SectionHeader(title: String, subtitle: String, onAction: () -> Unit, actionLabel: String = "登记") {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = DollUi.Ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-            Text(subtitle, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+            Text(title, color = NunuloUi.Ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+            Text(subtitle, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
         }
         TextButton(onClick = onAction) { Text(actionLabel) }
     }
@@ -1589,24 +1832,24 @@ private fun SectionHeader(title: String, subtitle: String, onAction: () -> Unit,
 
 @Composable
 private fun EmptyState(title: String, subtitle: String) {
-    JournalCard(containerColor = DollUi.Surface) {
+    JournalCard(containerColor = NunuloUi.Surface) {
         Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = DollUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
-            Text(subtitle, color = DollUi.Muted)
+            Text(title, color = NunuloUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, color = NunuloUi.Muted)
         }
     }
 }
 
 @Composable
 private fun FirstRecordCard(onPublish: () -> Unit) {
-    JournalCard(containerColor = DollUi.CoralSoft) {
+    JournalCard(containerColor = NunuloUi.CoralSoft) {
         Row(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onPublish).padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("记录第一张照片", color = DollUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
-                Text("先选照片，再补地点和标签。", color = DollUi.Slate, style = MaterialTheme.typography.bodySmall)
+                Text("记录第一张照片", color = NunuloUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+                Text("先选照片，再补地点和标签。", color = NunuloUi.Slate, style = MaterialTheme.typography.bodySmall)
             }
             Button(onClick = onPublish) { Text("开始") }
         }
@@ -1620,24 +1863,23 @@ private fun RouteIndexCard(records: List<CheckinItem>, visibleCount: Int, filter
         filters.query.takeIf { it.isNotBlank() }?.let { "关键词 $it" },
         filters.place.takeIf { it.isNotBlank() }?.let { "地点 $it" },
         filters.tag.takeIf { it.isNotBlank() }?.let { "标签 $it" },
-        filters.source.takeIf { it.isNotBlank() }?.let { sourceLabel(it) },
     )
-    JournalCard(containerColor = DollUi.Surface) {
+    JournalCard(containerColor = NunuloUi.Surface) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    Text("相册索引", color = DollUi.Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
-                    Text(latest?.let { "最近 ${shortDate(it.takenAt ?: it.createdAt)} · ${it.placeName}" } ?: "还没有照片记录", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("相册索引", color = NunuloUi.Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                    Text(latest?.let { "最近 ${shortDate(it.takenAt ?: it.createdAt)} · ${it.placeName}" } ?: "还没有照片记录", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text("${visibleCount}/${records.size}", color = DollUi.Coral, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text("${visibleCount}/${records.size}", color = NunuloUi.Coral, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                IndexCell("地点", placesCount.toString(), DollUi.GreenSoft, DollUi.Green, Modifier.weight(1f))
-                IndexCell("标签", tagsCount.toString(), DollUi.BlueSoft, DollUi.Blue, Modifier.weight(1f))
-                IndexCell("待整理", records.count { it.placeName == "未命名地点" || it.tags.isEmpty() }.toString(), DollUi.AmberSoft, DollUi.Amber, Modifier.weight(1f))
+                IndexCell("地点", placesCount.toString(), NunuloUi.GreenSoft, NunuloUi.Green, Modifier.weight(1f))
+                IndexCell("标签", tagsCount.toString(), NunuloUi.BlueSoft, NunuloUi.Blue, Modifier.weight(1f))
+                IndexCell("待整理", records.count { it.placeName == "未命名地点" || it.tags.isEmpty() }.toString(), NunuloUi.AmberSoft, NunuloUi.Amber, Modifier.weight(1f))
             }
             if (active.isNotEmpty()) {
-                Text("当前：${active.joinToString(" · ")}", color = DollUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("当前：${active.joinToString(" · ")}", color = NunuloUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -1652,7 +1894,7 @@ private fun IndexCell(label: String, value: String, background: Color, foregroun
             .padding(horizontal = 10.dp, vertical = 10.dp),
     ) {
         Text(value, color = foreground, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black, maxLines = 1)
-        Text(label, color = DollUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+        Text(label, color = NunuloUi.Slate, style = MaterialTheme.typography.bodySmall, maxLines = 1)
     }
 }
 
@@ -1663,7 +1905,7 @@ private fun BrowseFilterPanel(
     places: List<String>,
     onFiltersChange: (BrowseFilters) -> Unit,
 ) {
-    JournalCard(containerColor = DollUi.Surface) {
+    JournalCard(containerColor = NunuloUi.Surface) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 value = filters.query,
@@ -1672,24 +1914,6 @@ private fun BrowseFilterPanel(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
-                    FilterChip(
-                        selected = filters.source.isBlank(),
-                        onClick = { onFiltersChange(filters.copy(source = "")) },
-                        label = { Text("全部") },
-                    )
-                }
-                listOf("android_capture", "new_capture", "historical_import").forEach { source ->
-                    item {
-                        FilterChip(
-                            selected = filters.source == source,
-                            onClick = { onFiltersChange(filters.copy(source = source)) },
-                            label = { Text(sourceLabel(source)) },
-                        )
-                    }
-                }
-            }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(tags.take(12)) { tag ->
                     AssistChip(onClick = { onFiltersChange(filters.copy(tag = tag)) }, label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis) })
@@ -1711,15 +1935,15 @@ private fun BrowseFilterPanel(
 }
 
 @Composable
-private fun PublishReadinessCard(validation: DraftValidation, visibility: String) {
-    JournalCard(containerColor = if (validation.ready) DollUi.GreenSoft else DollUi.Surface) {
+private fun PublishReadinessCard(validation: DraftValidation) {
+    JournalCard(containerColor = if (validation.ready) NunuloUi.GreenSoft else NunuloUi.Surface) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    Text("登记检查", color = DollUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
-                    Text(if (validation.ready) "信息完整，可以登记" else validation.missingText, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("登记检查", color = NunuloUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+                    Text(if (validation.ready) "信息完整，可以登记" else validation.missingText, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                Text(visibilityLabel(visibility), color = DollUi.Blue, fontWeight = FontWeight.Bold)
+                Text("仅自己可见", color = NunuloUi.Blue, fontWeight = FontWeight.Bold)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 ReadinessStep("照片", validation.hasPhoto, Modifier.weight(1f))
@@ -1731,31 +1955,23 @@ private fun PublishReadinessCard(validation: DraftValidation, visibility: String
 }
 
 @Composable
-private fun PublishTagSelector(tagGroups: List<TagGroupItem>, selectedTags: List<String>, onToggle: (String) -> Unit) {
-    val groups = compactTagGroups(tagGroups.ifEmpty { FALLBACK_TAG_GROUPS })
-    var activeGroup by rememberSaveable { mutableStateOf(groups.firstOrNull()?.title.orEmpty()) }
-    val visibleGroup = groups.firstOrNull { it.title == activeGroup } ?: groups.firstOrNull()
+private fun PublishTagSelector(tags: List<TagItem>, value: String, onValueChange: (String) -> Unit, onToggle: (String) -> Unit) {
+    val selectedTags = parseDraftTags(value)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("标签", color = DollUi.Ink, fontWeight = FontWeight.Bold)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.fillMaxWidth()) {
-            items(groups) { group ->
-                Column(Modifier.clickable { activeGroup = group.title }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(group.title, color = if (activeGroup == group.title) DollUi.Coral else DollUi.Muted, fontWeight = if (activeGroup == group.title) FontWeight.Bold else FontWeight.Normal)
-                    Spacer(Modifier.height(5.dp))
-                    Box(Modifier.width(24.dp).height(2.dp).background(if (activeGroup == group.title) DollUi.Coral else Color.Transparent))
-                }
+        OutlinedTextField(value = value, onValueChange = onValueChange, label = { Text("标签，使用逗号分隔") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        if (tags.isNotEmpty()) {
+            Text("历史标签", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(tags) { tag -> StitchChip(tag.name, tag.name in selectedTags) { onToggle(tag.name) } }
             }
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(visibleGroup?.tags.orEmpty()) { tag -> StitchChip(tag.name, selectedTags.any { it == tag.name }) { onToggle(tag.name) } }
         }
     }
 }
 
 @Composable
 private fun ReadinessStep(label: String, done: Boolean, modifier: Modifier = Modifier) {
-    val background = if (done) DollUi.GreenSoft else DollUi.AmberSoft
-    val foreground = if (done) DollUi.Green else DollUi.Amber
+    val background = if (done) NunuloUi.GreenSoft else NunuloUi.AmberSoft
+    val foreground = if (done) NunuloUi.Green else NunuloUi.Amber
     Row(
         modifier = modifier.clip(RoundedCornerShape(999.dp)).background(background).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1787,9 +2003,9 @@ private fun UploadPhaseBar(uploadPhase: String, busy: Boolean, uploadProgress: I
             progress = { if (uploadPhase == "uploading" && uploadProgress > 0) uploadProgress / 100f else progress },
             modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(99.dp)),
         )
-        Text(if (uploadPhase == "uploading" && uploadProgress > 0) "$text $uploadProgress%" else text, color = if (uploadPhase == "failed") DollUi.Danger else DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+        Text(if (uploadPhase == "uploading" && uploadProgress > 0) "$text $uploadProgress%" else text, color = if (uploadPhase == "failed") NunuloUi.Danger else NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
         if (uploadPhase == "failed" && uploadMessage.isNotBlank()) {
-            Text(uploadMessage, color = DollUi.Danger, style = MaterialTheme.typography.bodySmall)
+            Text(uploadMessage, color = NunuloUi.Danger, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -1810,44 +2026,23 @@ private fun UploadQueueCard(uploadPhase: String, validation: DraftValidation) {
         else -> "登记前确认照片、地点和标签。"
     }
     Column(
-        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(DollUi.PaperTint).padding(12.dp),
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(NunuloUi.PaperTint).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(queueText, fontWeight = FontWeight.Black, color = DollUi.Slate)
-        Text(detail, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+        Text(queueText, fontWeight = FontWeight.Black, color = NunuloUi.Slate)
+        Text(detail, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
-private fun MapPreview(title: String, subtitle: String, records: List<CheckinItem>, world: Boolean) {
-    JournalCard(containerColor = DollUi.Surface) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AmapNativeMap(
-                records = records,
-                world = world,
-                modifier = Modifier.fillMaxWidth().height(if (world) 210.dp else 240.dp),
-                onOpen = {},
-            )
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(title, fontWeight = FontWeight.Black, color = DollUi.Ink, modifier = Modifier.weight(1f))
-                    Text("${records.size} 个记录点", color = DollUi.Blue, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                }
-                Text(subtitle, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AmapNativeMap(records: List<CheckinItem>, world: Boolean, modifier: Modifier = Modifier, onOpen: (CheckinItem) -> Unit) {
+private fun AmapNativeMap(records: List<CheckinItem>, modifier: Modifier = Modifier, onOpen: (CheckinItem) -> Unit) {
     val mapRecords = remember(records) { records.filter { it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 && !(it.latitude == 0.0 && it.longitude == 0.0) } }
     val hasAmapConfig = BuildConfig.AMAP_ANDROID_KEY.isNotBlank()
     val primaryAbi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
     val supportsAmapNative = primaryAbi == "arm64-v8a" || primaryAbi == "armeabi-v7a"
     if (!hasAmapConfig || !supportsAmapNative) {
         val reason = if (!hasAmapConfig) "地图配置待接入" else "模拟器使用坐标预览"
-        StaticMapFallback(records = mapRecords, world = world, modifier = modifier, reason = reason, onOpen = onOpen)
+        StaticMapFallback(records = mapRecords, modifier = modifier, reason = reason)
         return
     }
 
@@ -1872,33 +2067,28 @@ private fun AmapNativeMap(records: List<CheckinItem>, world: Boolean, modifier: 
             mapView.onDestroy()
         }
     }
-    LaunchedEffect(mapView, mapRecords, world) {
-        configureAmap(mapView.map, mapRecords, world, onOpen)
+    LaunchedEffect(mapView, mapRecords) {
+        configureAmap(mapView.map, mapRecords, onOpen)
     }
-    Box(modifier.clip(RoundedCornerShape(12.dp)).background(DollUi.Placeholder)) {
+    Box(modifier.clip(RoundedCornerShape(12.dp)).background(NunuloUi.Placeholder)) {
         AndroidView(
             factory = { mapView },
-            update = { view -> configureAmap(view.map, mapRecords, world, onOpen) },
+            update = { view -> configureAmap(view.map, mapRecords, onOpen) },
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
 
 @Composable
-private fun StaticMapFallback(records: List<CheckinItem>, world: Boolean, modifier: Modifier, reason: String, onOpen: (CheckinItem) -> Unit) {
+private fun StaticMapFallback(records: List<CheckinItem>, modifier: Modifier, reason: String) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(Brush.linearGradient(listOf(DollUi.BlueSoft, DollUi.GreenSoft, DollUi.CoralSoft)))
+            .background(Brush.linearGradient(listOf(NunuloUi.BlueSoft, NunuloUi.GreenSoft, NunuloUi.CoralSoft)))
             .padding(18.dp),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val grid = Color(0x77FFFFFF)
-            if (world) {
-                drawOval(Color(0x44FFFFFF), topLeft = Offset(size.width * 0.08f, size.height * 0.18f), size = Size(size.width * 0.26f, size.height * 0.34f))
-                drawOval(Color(0x44FFFFFF), topLeft = Offset(size.width * 0.37f, size.height * 0.12f), size = Size(size.width * 0.20f, size.height * 0.28f))
-                drawOval(Color(0x44FFFFFF), topLeft = Offset(size.width * 0.58f, size.height * 0.25f), size = Size(size.width * 0.28f, size.height * 0.38f))
-            }
             repeat(5) { index ->
                 val y = size.height * (index + 1) / 6f
                 val x = size.width * (index + 1) / 6f
@@ -1909,15 +2099,15 @@ private fun StaticMapFallback(records: List<CheckinItem>, world: Boolean, modifi
                 val x = (0.12f + mapRatio(record.longitude, index) * 0.76f) * size.width
                 val y = (0.16f + mapRatio(record.latitude, index + 11) * 0.68f) * size.height
                 drawCircle(Color(0x33E45B3F), radius = 13.dp.toPx(), center = Offset(x, y))
-                drawCircle(DollUi.Coral, radius = 5.dp.toPx(), center = Offset(x, y))
+                drawCircle(NunuloUi.Coral, radius = 5.dp.toPx(), center = Offset(x, y))
             }
         }
-        Text(reason, fontWeight = FontWeight.Black, color = DollUi.Ink, modifier = Modifier.align(Alignment.TopStart))
-        Text("${records.size} 个记录点", color = DollUi.Ink, modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text(reason, fontWeight = FontWeight.Black, color = NunuloUi.Ink, modifier = Modifier.align(Alignment.TopStart))
+        Text("${records.size} 个记录点", color = NunuloUi.Ink, modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
     }
 }
 
-private fun configureAmap(amap: AMap, records: List<CheckinItem>, world: Boolean, onOpen: (CheckinItem) -> Unit) {
+private fun configureAmap(amap: AMap, records: List<CheckinItem>, onOpen: (CheckinItem) -> Unit) {
     amap.uiSettings.isZoomControlsEnabled = false
     amap.uiSettings.isScaleControlsEnabled = true
     amap.uiSettings.isCompassEnabled = false
@@ -1939,44 +2129,14 @@ private fun configureAmap(amap: AMap, records: List<CheckinItem>, world: Boolean
     }
     amap.setOnMarkerClickListener { marker -> markerRecords[marker.id]?.let(onOpen); true }
     if (points.isEmpty()) {
-        val fallback = if (world) LatLng(35.8617, 104.1954) else LatLng(31.2304, 121.4737)
-        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(fallback, if (world) 3f else 11f))
+        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(31.2304, 121.4737), 11f))
     } else if (points.size == 1) {
-        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(points.first().second, if (world) 5f else 13f))
+        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(points.first().second, 13f))
     } else {
         val bounds = LatLngBounds.builder().apply { points.forEach { include(it.second) } }.build()
-        amap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, if (world) 42 else 54))
+        amap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 54))
     }
-    Log.d(AMAP_LOG_TAG, "native-map-ready mode=${if (world) "world" else "personal"} markers=${points.size}")
-}
-
-@Composable
-private fun CheckinCard(
-    record: CheckinItem,
-    apiBase: String,
-    api: NunuloApi,
-    pendingDelete: Boolean,
-    onDelete: () -> Unit,
-) {
-    JournalCard(containerColor = DollUi.Surface) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            RemoteImage(url = record.displayUrl ?: record.thumbUrl, apiBase = apiBase, api = api)
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(record.placeName, color = DollUi.Ink, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${shortDate(record.takenAt ?: record.createdAt)} · ${sourceLabel(record.source)} · ${visibilityLabel(record.visibility)}", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
-                    }
-                    TextButton(onClick = onDelete) { Text(if (pendingDelete) "确认删除" else "删除", color = if (pendingDelete) DollUi.Danger else DollUi.Muted) }
-                }
-                if (record.note.isNotBlank()) Text(record.note, color = DollUi.Slate, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    record.tags.take(4).forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
-                    if (record.tags.isEmpty()) AssistChip(onClick = {}, label = { Text("待整理") })
-                }
-            }
-        }
-    }
+    Log.d(AMAP_LOG_TAG, "native-map-ready mode=personal markers=${points.size}")
 }
 
 @Composable
@@ -1986,54 +2146,106 @@ private fun CheckinDetailDialog(
     api: NunuloApi,
     busy: Boolean,
     pendingDelete: Boolean,
-    interaction: InteractionState,
     comments: List<CommentItem>,
+    albums: List<AlbumItem>,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onToggleLike: () -> Unit,
+    onLike: () -> Unit,
     onComment: (String) -> Unit,
+    onReport: () -> Unit,
+    onAddToAlbum: (AlbumItem) -> Unit,
 ) {
-    var commentText by rememberSaveable(record.id) { mutableStateOf("") }
+    var commentBody by rememberSaveable(record.id) { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(record.placeName.ifBlank { "未命名地点" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item { RemoteImage(record.displayUrl ?: record.thumbUrl ?: record.originalUrl, apiBase, api, aspect = 0.82f) }
-                item { Text("${shortDate(record.takenAt ?: record.createdAt)} · ${visibilityLabel(record.visibility)}", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall) }
-                if (record.note.isNotBlank()) item { Text(record.note, color = DollUi.Ink) }
+                item {
+                    Text(
+                        "${record.authorName} · ${shortDate(record.takenAt ?: record.createdAt)} · ${visibilityLabel(record.visibility)}",
+                        color = NunuloUi.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (record.note.isNotBlank()) item { Text(record.note, color = NunuloUi.Ink) }
                 if (record.tags.isNotEmpty()) item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(record.tags) { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
                     }
                 }
-                item { Text(formatCoordinate(record.latitude, record.longitude), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall) }
+                item { Text(formatCoordinate(record.latitude, record.longitude), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall) }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = onLike, enabled = !busy) {
+                            Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}")
+                        }
+                        Text("${record.commentCount} 条评论", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (record.canEdit && albums.isNotEmpty()) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("加入我的合集", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(albums, key = { it.id }) { album ->
+                                    AssistChip(onClick = { onAddToAlbum(album) }, label = { Text(album.title) })
+                                }
+                            }
+                        }
+                    }
+                }
+                item { Text("评论", fontWeight = FontWeight.Bold) }
+                if (comments.isEmpty()) {
+                    item { Text("还没有评论，说点和这张照片有关的事。", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall) }
+                } else {
+                    items(comments, key = { it.id }) { comment ->
+                        JournalCard(containerColor = NunuloUi.Surface) {
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(comment.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                                Text(comment.body)
+                                Text(shortDate(comment.createdAt), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StitchChip(if (interaction.liked) "已喜欢 ${interaction.likeCount}" else "喜欢 ${interaction.likeCount}", interaction.liked, onToggleLike)
-                        Text("${interaction.commentCount} 条评论", color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                items(comments, key = { it.id }) { comment ->
-                    Column(Modifier.fillMaxWidth().background(DollUi.PaperTint).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(comment.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                        Text(comment.body, color = DollUi.Ink)
-                        Text(shortDate(comment.createdAt), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedTextField(commentText, { commentText = it }, placeholder = { Text("写评论") }, modifier = Modifier.weight(1f), maxLines = 3)
-                        Button(onClick = { val text = commentText.trim(); if (text.isNotEmpty()) { onComment(text); commentText = "" } }, enabled = commentText.isNotBlank() && !busy) { Text("发送") }
+                        OutlinedTextField(
+                            value = commentBody,
+                            onValueChange = { if (it.length <= 1000) commentBody = it },
+                            label = { Text("写一条评论") },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 3,
+                        )
+                        Button(
+                            onClick = {
+                                val text = commentBody.trim()
+                                if (text.isNotEmpty()) {
+                                    onComment(text)
+                                    commentBody = ""
+                                }
+                            },
+                            enabled = !busy && commentBody.isNotBlank(),
+                        ) { Text("发送") }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onEdit, enabled = !busy) { Text("编辑") } },
+        confirmButton = {
+            if (record.canEdit) {
+                TextButton(onClick = onEdit, enabled = !busy) { Text("编辑") }
+            } else {
+                TextButton(onClick = onReport, enabled = !busy) { Text("举报", color = NunuloUi.Danger) }
+            }
+        },
         dismissButton = {
             Row {
-                TextButton(onClick = onDelete, enabled = !busy) { Text(if (pendingDelete) "确认删除" else "删除", color = DollUi.Danger) }
+                if (record.canEdit) {
+                    TextButton(onClick = onDelete, enabled = !busy) { Text(if (pendingDelete) "确认删除" else "删除", color = NunuloUi.Danger) }
+                }
                 TextButton(onClick = onDismiss) { Text("关闭") }
             }
         },
@@ -2041,13 +2253,14 @@ private fun CheckinDetailDialog(
 }
 
 @Composable
-private fun CheckinEditDialog(record: CheckinItem, tagGroups: List<TagGroupItem>, busy: Boolean, onDismiss: () -> Unit, onSave: (CheckinEditDraft) -> Unit) {
+private fun CheckinEditDialog(record: CheckinItem, availableTags: List<TagItem>, busy: Boolean, onDismiss: () -> Unit, onSave: (CheckinEditDraft) -> Unit) {
     var placeName by rememberSaveable(record.id) { mutableStateOf(record.placeName) }
     var latitude by rememberSaveable(record.id) { mutableStateOf(record.latitude.toString()) }
     var longitude by rememberSaveable(record.id) { mutableStateOf(record.longitude.toString()) }
     var note by rememberSaveable(record.id) { mutableStateOf(record.note) }
-    var selectedTags by remember(record.id) { mutableStateOf(record.tags) }
+    var tagText by rememberSaveable(record.id) { mutableStateOf(record.tags.joinToString(",")) }
     var visibility by rememberSaveable(record.id) { mutableStateOf(record.visibility) }
+    val selectedTags = parseDraftTags(tagText)
     val latitudeValue = latitude.toDoubleOrNull()
     val longitudeValue = longitude.toDoubleOrNull()
     val valid = placeName.isNotBlank() && latitudeValue != null && latitudeValue in -90.0..90.0 && longitudeValue != null && longitudeValue in -180.0..180.0
@@ -2064,23 +2277,37 @@ private fun CheckinEditDialog(record: CheckinItem, tagGroups: List<TagGroupItem>
                     }
                 }
                 item { OutlinedTextField(note, { note = it }, label = { Text("备注") }, minLines = 2, modifier = Modifier.fillMaxWidth()) }
-                tagGroups.forEach { group ->
-                    item {
-                        Text(group.title, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                item {
+                    OutlinedTextField(
+                        value = tagText,
+                        onValueChange = { tagText = it },
+                        label = { Text("标签，使用逗号分隔") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                    if (availableTags.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(group.tags) { tag ->
+                            items(availableTags) { tag ->
                                 StitchChip(tag.name, tag.name in selectedTags) {
-                                    selectedTags = if (tag.name in selectedTags) selectedTags - tag.name else selectedTags + tag.name
+                                    tagText = toggleTag(tagText, tag.name)
                                 }
                             }
                         }
                     }
                 }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(listOf("private" to "私密", "friends" to "关注", "public" to "公开")) { option ->
-                            StitchChip(option.second, visibility == option.first) { visibility = option.first }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("谁可以看到", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(listOf("private", "followers", "public")) { value ->
+                                FilterChip(
+                                    selected = visibility == value,
+                                    onClick = { visibility = value },
+                                    label = { Text(visibilityLabel(value)) },
+                                )
+                            }
                         }
+                        Text("非本人查看时位置会降低精度", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -2088,7 +2315,18 @@ private fun CheckinEditDialog(record: CheckinItem, tagGroups: List<TagGroupItem>
         confirmButton = {
             TextButton(
                 enabled = valid && !busy,
-                onClick = { onSave(CheckinEditDraft(placeName, latitude, longitude, note, selectedTags.joinToString(","), visibility)) },
+                onClick = {
+                    onSave(
+                        CheckinEditDraft(
+                            placeName = placeName,
+                            latitude = latitude,
+                            longitude = longitude,
+                            note = note,
+                            tags = tagText,
+                            visibility = visibility,
+                        )
+                    )
+                },
             ) { Text(if (busy) "保存中" else "保存") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
@@ -2099,9 +2337,9 @@ private fun CheckinEditDialog(record: CheckinItem, tagGroups: List<TagGroupItem>
 private fun RemoteImage(url: String?, apiBase: String, api: NunuloApi, aspect: Float = 1.25f) {
     if (url.isNullOrBlank()) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(aspect).background(DollUi.Placeholder),
+            Modifier.fillMaxWidth().aspectRatio(aspect).background(NunuloUi.Placeholder),
             contentAlignment = Alignment.Center,
-        ) { Text("等待图片", color = DollUi.Muted) }
+        ) { Text("等待图片", color = NunuloUi.Muted) }
         return
     }
     val resolved = remember(url, apiBase) { resolveAssetUrl(apiBase, url) }
@@ -2109,8 +2347,8 @@ private fun RemoteImage(url: String?, apiBase: String, api: NunuloApi, aspect: F
         value = runCatching { api.downloadBitmap(apiBase, resolved) }.getOrNull()
     }
     if (bitmap == null) {
-        Box(Modifier.fillMaxWidth().aspectRatio(aspect).background(DollUi.Placeholder), contentAlignment = Alignment.Center) {
-            Text("加载图片", color = DollUi.Muted)
+        Box(Modifier.fillMaxWidth().aspectRatio(aspect).background(NunuloUi.Placeholder), contentAlignment = Alignment.Center) {
+            Text("加载图片", color = NunuloUi.Muted)
         }
     } else {
         Image(
@@ -2128,13 +2366,13 @@ private fun PhotoPickerCard(uri: Uri?, onPick: () -> Unit, onCamera: () -> Unit)
     val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
         value = if (uri == null) null else withContext(Dispatchers.IO) { decodeSampledBitmap(context.contentResolver, uri) }
     }
-    Box(Modifier.fillMaxWidth().height(360.dp).background(DollUi.Placeholder).clickable(onClick = onPick), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().height(360.dp).background(NunuloUi.Placeholder).clickable(onClick = onPick), contentAlignment = Alignment.Center) {
         if (bitmap == null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(if (uri == null) "选择一张照片" else "照片已选择，预览暂不可用", color = DollUi.Ink, fontWeight = FontWeight.Bold)
+                Text(if (uri == null) "选择一张照片" else "照片已选择，预览暂不可用", color = NunuloUi.Ink, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(color = DollUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPick)) { Text("相册", color = Color.White, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontWeight = FontWeight.Bold) }
-                    Surface(color = Color.White, shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, DollUi.Hairline), modifier = Modifier.clickable(onClick = onCamera)) { Text("拍摄", color = DollUi.Ink, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontWeight = FontWeight.Bold) }
+                    Surface(color = NunuloUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPick)) { Text("相册", color = Color.White, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontWeight = FontWeight.Bold) }
+                    Surface(color = Color.White, shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, NunuloUi.Hairline), modifier = Modifier.clickable(onClick = onCamera)) { Text("拍摄", color = NunuloUi.Ink, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp), fontWeight = FontWeight.Bold) }
                 }
             }
         } else {
@@ -2148,15 +2386,15 @@ private fun PhotoPickerCard(uri: Uri?, onPick: () -> Unit, onCamera: () -> Unit)
 private fun PlaceRow(record: CheckinItem) {
     JournalCard {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(42.dp).clip(CircleShape).background(DollUi.BlueSoft), contentAlignment = Alignment.Center) {
-                Text("点", color = DollUi.Blue, fontWeight = FontWeight.Black)
+            Box(Modifier.size(42.dp).clip(CircleShape).background(NunuloUi.BlueSoft), contentAlignment = Alignment.Center) {
+                Text("点", color = NunuloUi.Blue, fontWeight = FontWeight.Black)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(record.placeName, color = DollUi.Ink, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(formatCoordinate(record.latitude, record.longitude), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+                Text(record.placeName, color = NunuloUi.Ink, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(formatCoordinate(record.latitude, record.longitude), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
             }
-            Text(shortDate(record.takenAt ?: record.createdAt), color = DollUi.Muted, style = MaterialTheme.typography.bodySmall)
+            Text(shortDate(record.takenAt ?: record.createdAt), color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -2171,7 +2409,7 @@ private fun LibraryEntryCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    JournalCard(modifier = modifier, containerColor = DollUi.Surface) {
+    JournalCard(modifier = modifier, containerColor = NunuloUi.Surface) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -2198,8 +2436,8 @@ private fun LibraryEntryCard(
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, color = DollUi.Ink, fontWeight = FontWeight.Black, maxLines = 1)
-                Text(subtitle, color = DollUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, color = NunuloUi.Ink, fontWeight = FontWeight.Black, maxLines = 1)
+                Text(subtitle, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -2209,7 +2447,7 @@ private fun LibraryEntryCard(
 private fun LibraryGroup(title: String, chips: List<String>, selected: String, onChip: (String) -> Unit) {
     JournalCard {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, color = DollUi.Ink, fontWeight = FontWeight.Black)
+            Text(title, color = NunuloUi.Ink, fontWeight = FontWeight.Black)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(chips.take(12)) { chip ->
                     FilterChip(
@@ -2226,14 +2464,14 @@ private fun LibraryGroup(title: String, chips: List<String>, selected: String, o
 @Composable
 private fun DollTheme(content: @Composable () -> Unit) {
     val colors = lightColorScheme(
-        primary = DollUi.Coral,
-        secondary = DollUi.Green,
-        tertiary = DollUi.Blue,
-        background = DollUi.Background,
-        surface = DollUi.Surface,
-        onPrimary = DollUi.Paper,
-        onSecondary = DollUi.Paper,
-        onSurface = DollUi.Ink,
+        primary = NunuloUi.Coral,
+        secondary = NunuloUi.Green,
+        tertiary = NunuloUi.Blue,
+        background = NunuloUi.Background,
+        surface = NunuloUi.Surface,
+        onPrimary = NunuloUi.Paper,
+        onSecondary = NunuloUi.Paper,
+        onSurface = NunuloUi.Ink,
     )
     val compactTypography = Typography(
         headlineMedium = TextStyle(fontSize = 20.sp, lineHeight = 25.sp, fontWeight = FontWeight.Bold),
@@ -2253,112 +2491,94 @@ private fun resolveAssetUrl(apiBase: String, url: String): String = when {
     else -> apiBase.trim().trimEnd('/') + "/" + url
 }
 
-private fun parseAuthUser(json: JSONObject, fallbackUsage: Long? = null, fallbackQuota: Long? = null): AuthUser {
+private fun parseAuthUser(json: JSONObject): AuthUser {
     return AuthUser(
         id = json.getInt("id"),
-        displayName = json.nullableString("display_name") ?: json.nullableString("username") ?: "用户",
+        displayName = json.getString("display_name"),
         username = json.nullableString("username"),
         email = json.nullableString("email"),
-        roles = parseStringArray(json.optJSONArray("roles")),
-        storageUsageBytes = json.optLong("storage_usage_bytes", fallbackUsage ?: 0L),
-        storageQuotaBytes = json.optLong("storage_quota_bytes", fallbackQuota ?: 0L),
+        roles = parseStringArray(json.getJSONArray("roles")),
+        storageUsageBytes = json.getLong("storage_usage_bytes"),
+        storageQuotaBytes = json.getLong("storage_quota_bytes"),
         avatarUrl = json.nullableString("avatar_url"),
     )
 }
 
-private fun parseMessage(json: JSONObject): MessageItem {
-    return MessageItem(
-        id = json.optString("id", "message-${json.optString("kind", "item")}"),
-        kind = json.optString("kind", "system"),
-        title = json.optString("title", "消息"),
-        body = json.optString("body", ""),
-        priority = json.optString("priority", "normal"),
-        createdAt = json.nullableString("created_at"),
-    )
-}
-
-private fun parseTagCatalog(json: JSONObject): TagCatalog {
-    val groupsJson = json.optJSONArray("groups")
-    val groups = buildList {
-        if (groupsJson != null) {
-            for (index in 0 until groupsJson.length()) add(parseTagGroup(groupsJson.getJSONObject(index)))
-        }
-    }
-    return TagCatalog(
-        groups = compactTagGroups(groups).ifEmpty { FALLBACK_TAG_GROUPS },
-        total = json.optInt("total", groups.sumOf { it.tags.size }),
-    )
-}
-
-private fun parseTagGroup(json: JSONObject): TagGroupItem {
-    val id = json.optString("id", json.optString("code", "custom")).ifBlank { "custom" }
-    val tagsJson = json.optJSONArray("tags")
-    val tags = buildList {
-        if (tagsJson != null) {
-            for (index in 0 until tagsJson.length()) add(parseTagItem(tagsJson.getJSONObject(index), id))
-        }
-    }
-    return TagGroupItem(
-        id = id,
-        title = json.optString("title", id),
-        description = json.optString("description", ""),
-        sortOrder = json.optInt("sort_order", 0),
-        tags = tags,
-    )
-}
-
-private fun parseTagItem(json: JSONObject, fallbackGroup: String): TagItem {
+private fun parseTagItem(json: JSONObject): TagItem {
     return TagItem(
-        name = json.optString("name"),
-        count = json.optInt("count", 0),
-        source = json.optString("source", "default"),
-        groupCode = json.optString("group_code", fallbackGroup),
-        slug = json.nullableString("slug"),
+        name = json.getString("name"),
+        count = json.getInt("count"),
     )
 }
 
-private fun parseAlbum(json: JSONObject): AlbumItem {
-    return AlbumItem(
-        id = json.optString("id"),
-        type = json.optString("album_type", "smart"),
-        title = json.optString("title", "合集"),
-        description = json.optString("description", ""),
-        itemCount = json.optInt("item_count", 0),
-    )
-}
+private fun parseComment(json: JSONObject) = CommentItem(
+    id = json.getString("id"),
+    displayName = json.optString("display_name", "测试成员"),
+    body = json.getString("body"),
+    createdAt = json.nullableString("created_at"),
+)
 
-private fun parseMapCell(json: JSONObject, scope: String): MapCellItem {
-    return MapCellItem(
-        id = json.optString("id"),
-        scope = scope,
-        photoCount = json.optInt("photo_count", 0),
-        checkinCount = json.optInt("checkin_count", 0),
-    )
-}
+private fun parseNotification(json: JSONObject) = NotificationItem(
+    id = json.getString("id"),
+    title = json.getString("title"),
+    body = json.getString("body"),
+    readAt = json.nullableString("read_at"),
+    createdAt = json.nullableString("created_at"),
+)
 
-private fun parseCheckin(json: JSONObject): CheckinItem {
+private fun parsePerson(json: JSONObject) = PersonItem(
+    id = json.getInt("id"),
+    displayName = json.getString("display_name"),
+    username = json.nullableString("username"),
+    bio = json.nullableString("bio"),
+    following = json.optBoolean("following"),
+)
+
+private fun parseAlbum(json: JSONObject) = AlbumItem(
+    id = json.getString("id"),
+    title = json.getString("title"),
+    itemCount = json.optInt("item_count"),
+    visibility = json.optString("visibility", "private"),
+)
+
+private fun parseExport(json: JSONObject) = ExportItem(
+    id = json.getString("id"),
+    status = json.getString("status"),
+    createdAt = json.nullableString("created_at"),
+    downloadUrl = json.nullableString("download_url"),
+)
+
+internal fun parseCheckin(json: JSONObject): CheckinItem {
     val assets = json.optJSONArray("assets")
     var originalUrl: String? = null
     if (assets != null) {
         for (index in 0 until assets.length()) {
             val asset = assets.optJSONObject(index) ?: continue
             if (asset.optString("variant") == "original") {
-                originalUrl = asset.nullableString("url") ?: asset.nullableString("signed_url")
+                originalUrl = asset.nullableString("url")
                 break
             }
         }
     }
+    val author = json.optJSONObject("author")
+    val interaction = json.optJSONObject("interaction")
     return CheckinItem(
         id = json.getString("id"),
-        placeName = json.optString("place_name", json.optJSONObject("place")?.optString("name") ?: "未命名地点"),
-        note = json.optString("note", ""),
-        latitude = json.optDouble("latitude", 0.0),
-        longitude = json.optDouble("longitude", 0.0),
-        tags = parseStringArray(json.optJSONArray("tags")),
+        userId = json.optInt("user_id"),
+        authorName = author?.optString("display_name")?.takeIf { it.isNotBlank() } ?: "我",
+        placeName = json.getString("place_name"),
+        note = json.getString("note"),
+        latitude = json.getDouble("latitude"),
+        longitude = json.getDouble("longitude"),
+        tags = parseStringArray(json.getJSONArray("tags")),
         createdAt = json.nullableString("created_at"),
         takenAt = json.nullableString("taken_at"),
-        source = json.optString("source", ""),
+        source = json.getString("source"),
         visibility = json.optString("visibility", "private"),
+        canEdit = json.optBoolean("can_edit", true),
+        liked = interaction?.optBoolean("liked") ?: false,
+        likeCount = interaction?.optInt("like_count") ?: 0,
+        commentCount = interaction?.optInt("comment_count") ?: 0,
         thumbUrl = json.nullableString("thumb_url"),
         displayUrl = json.nullableString("display_url"),
         originalUrl = originalUrl,
@@ -2378,14 +2598,19 @@ private fun parseStringArray(array: JSONArray?): List<String> {
     }.filter { it.isNotBlank() }
 }
 
-private fun compactTagGroups(groups: List<TagGroupItem>): List<TagGroupItem> {
-    return groups
-        .sortedWith(compareBy<TagGroupItem> { it.sortOrder }.thenBy { it.title })
-        .map { group ->
-            val seen = mutableSetOf<String>()
-            group.copy(tags = group.tags.filter { tag -> tag.name.isNotBlank() && seen.add(tag.name) })
-        }
-        .filter { it.tags.isNotEmpty() }
+internal fun checkinFeedPath(scope: FeedScope): String = "/api/checkins?scope=${scope.apiValue}&limit=120&offset=0"
+
+internal fun shouldShowOwnUpload(scope: FeedScope, visibility: String): Boolean = when (scope) {
+    FeedScope.All, FeedScope.Mine -> true
+    FeedScope.Public -> visibility == "public"
+    FeedScope.Following -> false
+}
+
+internal fun visibilityLabel(value: String): String = when (value) {
+    "private" -> "仅自己"
+    "followers" -> "关注者"
+    "public" -> "所有测试成员"
+    else -> "未知范围"
 }
 
 private fun validateDraft(draft: UploadDraft): DraftValidation {
@@ -2423,7 +2648,7 @@ private fun toggleTag(current: String, tag: String): String {
 
 private fun rankedTags(records: List<CheckinItem>): List<Pair<String, Int>> {
     return records.flatMap { it.tags }
-        .filter { it.isNotBlank() && looksLikeCollectionTag(it) }
+        .filter { it.isNotBlank() }
         .groupingBy { it }
         .eachCount()
         .entries
@@ -2435,7 +2660,6 @@ private fun filterRecords(records: List<CheckinItem>, filters: BrowseFilters): L
     val query = filters.query.trim().lowercase()
     val tag = filters.tag.trim().lowercase()
     val place = filters.place.trim().lowercase()
-    val source = filters.source.trim()
     return records.filter { record ->
         val searchable = buildString {
             append(record.placeName).append(' ')
@@ -2444,36 +2668,8 @@ private fun filterRecords(records: List<CheckinItem>, filters: BrowseFilters): L
         }.lowercase()
         (query.isBlank() || query in searchable) &&
             (tag.isBlank() || record.tags.any { it.lowercase() == tag }) &&
-            (place.isBlank() || record.placeName.lowercase() == place) &&
-            (source.isBlank() || record.source == source)
+            (place.isBlank() || record.placeName.lowercase() == place)
     }
-}
-
-private fun sourceLabel(source: String): String = when (source) {
-    "android_capture" -> "手机记录"
-    "new_capture" -> "新拍记录"
-    "historical_import" -> "历史补录"
-    "" -> "全部"
-    else -> source
-}
-
-private fun sourceValue(label: String): String = when (label) {
-    "手机记录" -> "android_capture"
-    "新拍记录" -> "new_capture"
-    "历史补录" -> "historical_import"
-    else -> ""
-}
-
-private fun visibilityLabel(visibility: String): String = when (visibility) {
-    "private" -> "私密"
-    "friends" -> "好友"
-    "public" -> "公开"
-    else -> visibility.ifBlank { "私密" }
-}
-
-private fun looksLikeCollectionTag(tag: String): Boolean {
-    val text = tag.lowercase()
-    return "bang" in text || "mygo" in text || "ave" in text || "ip" in text || "角色" in tag || "活动" in tag || "团" in tag
 }
 
 private data class MapPoint(val latitude: Double, val longitude: Double)

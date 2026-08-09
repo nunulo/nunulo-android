@@ -29,11 +29,9 @@ fun readBuildConfigValue(name: String): String = firstNotBlank(
     readLocalProperty(rootProject.projectDir.parentFile.resolve("local.properties"), name),
 )
 
-val amapAndroidKeyDebug = firstNotBlank(
-    readBuildConfigValue("AMAP_ANDROID_KEY_DEBUG"),
-    readBuildConfigValue("AMAP_ANDROID_KEY"),
-)
+val amapAndroidKeyDebug = readBuildConfigValue("AMAP_ANDROID_KEY_DEBUG")
 val amapAndroidKeyRelease = readBuildConfigValue("AMAP_ANDROID_KEY_RELEASE")
+val apiBaseUrl = readBuildConfigValue("NUNULO_API_BASE_URL").ifBlank { "https://nunulo.lumokato.com" }
 val releaseKeystorePath = readBuildConfigValue("NUNULO_RELEASE_KEYSTORE_PATH")
 val releaseStorePassword = readBuildConfigValue("NUNULO_RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = readBuildConfigValue("NUNULO_RELEASE_KEY_ALIAS")
@@ -53,8 +51,8 @@ android {
         applicationId = "com.lumokato.nunulo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.0-personal.2"
+        versionCode = 3
+        versionName = "0.2.0-test.1"
         manifestPlaceholders["amapApiKey"] = ""
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -76,11 +74,13 @@ android {
         debug {
             manifestPlaceholders["amapApiKey"] = amapAndroidKeyDebug
             buildConfigField("String", "AMAP_ANDROID_KEY", buildConfigString(amapAndroidKeyDebug))
+            buildConfigField("String", "NUNULO_API_BASE_URL", buildConfigString(apiBaseUrl))
         }
 
         release {
             manifestPlaceholders["amapApiKey"] = amapAndroidKeyRelease
             buildConfigField("String", "AMAP_ANDROID_KEY", buildConfigString(amapAndroidKeyRelease))
+            buildConfigField("String", "NUNULO_API_BASE_URL", buildConfigString(apiBaseUrl))
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("personalRelease")
             }
@@ -120,6 +120,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
     debugImplementation("androidx.compose.ui:ui-tooling:1.11.2")
 }
 

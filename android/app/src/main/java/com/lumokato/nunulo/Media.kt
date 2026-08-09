@@ -191,21 +191,26 @@ private fun defaultFilename(mimeType: String): String = when (mimeType) {
 
 internal fun savePendingUpload(prefs: SharedPreferences, pending: PendingUpload) {
     val photoPath = pending.draft.photoUri?.let(::localFile)?.absolutePath ?: return
+    val draftFields = pendingUploadFields(pending.draft)
     val payload = JSONObject()
         .put("request_id", pending.requestId)
         .put("attempted", pending.attempted)
         .put("photo_path", photoPath)
-        .put("place_name", pending.draft.placeName)
-        .put("latitude", pending.draft.latitude)
-        .put("longitude", pending.draft.longitude)
-        .put("location_source", pending.draft.locationSource)
-        .put("note", pending.draft.note)
-        .put("tags", pending.draft.tags)
-        .put("visibility", pending.draft.visibility)
+    draftFields.forEach { (key, value) -> payload.put(key, value) }
     if (!prefs.edit().putString("pendingUpload", payload.toString()).commit()) {
         throw IllegalStateException("无法保存上传草稿")
     }
 }
+
+internal fun pendingUploadFields(draft: UploadDraft): Map<String, String> = linkedMapOf(
+    "place_name" to draft.placeName,
+    "latitude" to draft.latitude,
+    "longitude" to draft.longitude,
+    "location_source" to draft.locationSource,
+    "note" to draft.note,
+    "tags" to draft.tags,
+    "visibility" to draft.visibility,
+)
 
 internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
     val raw = prefs.getString("pendingUpload", null) ?: return null
