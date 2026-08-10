@@ -5,10 +5,10 @@ Nunulo Android 日常客户端，使用 Kotlin、Jetpack Compose、高德地图 
 ## 当前状态
 
 - 邀请制多人测试环境已上线，当前 Android 预发布版本为 `v0.2.0-test.1`；尚未公开正式发布，历史 APK 不代表当前版本。
-- Release APK 已重新下载并核对 SHA-256；当前没有连接的物理 Android 设备，拍照、定位、断网与杀进程验收仍未完成。
+- Release APK 已重新下载并核对 SHA-256；2026-08-10 已在雷电 Android 14 x86_64 模拟器上完成登录、五个入口、地图回退、WKE 定位、系统照片选择、草稿强停恢复、断网失败重试与重复提交验证，临时记录清理后存储对账仍为零异常。该结果只作为模拟器证据，不能替代物理 Android 验收。
 - 构建默认使用 `https://nunulo.lumokato.com`；需要切换本地或其他测试环境时，通过 Gradle 属性、环境变量或未提交的 `local.properties` 显式提供 `NUNULO_API_BASE_URL`。
 - 当前版本身份为 `0.2.0-test.1`（`versionCode=3`），目标是邀请制多人测试；历史模拟器闭环不再证明本轮重构后的运行结果。
-- 当前里程碑：真实 PostGIS CI、外部四角色多人链路、并发与 R2 数据链已通过；剩余重点是物理设备拍照、定位、断网与进程恢复验收。
+- 当前里程碑：真实 PostGIS CI、外部四角色多人链路、并发、R2 数据链与 Android 模拟器闭环已通过；剩余重点是物理设备拍照、定位、断网与进程恢复验收。
 - Android namespace、applicationId 和 Kotlin 包路径统一使用 `com.lumokato.nunulo`，不保留旧包升级兼容。
 
 ## 本地构建
