@@ -31,17 +31,17 @@ jobs:
           cache: gradle
       - uses: android-actions/setup-android@v3
       - run: chmod +x gradlew
-      - name: Prepare personal release signing
+      - name: Prepare release signing
         env:
           NUNULO_RELEASE_KEYSTORE_BASE64: ${{ secrets.NUNULO_RELEASE_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           test -n "$NUNULO_RELEASE_KEYSTORE_BASE64"
-          keystore="$RUNNER_TEMP/nunulo-personal-release.keystore"
+          keystore="$RUNNER_TEMP/nunulo-release.keystore"
           printf '%s' "$NUNULO_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           printf 'NUNULO_RELEASE_KEYSTORE_PATH=%s\n' "$keystore" >> "$GITHUB_ENV"
       - name: Build and test
-        run: ./gradlew :app:verifyPersonalReleaseConfiguration :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
+        run: ./gradlew :app:verifyReleaseConfiguration :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
       - name: Verify release identity and map key
         run: |
           set -euo pipefail
@@ -57,7 +57,7 @@ jobs:
           printf 'certificate_sha1=%s\napplication_id=%s\nversion_code=%s\n' "$actual_sha1" "$application_id" "$version_code"
           test "$actual_sha1" = "ced42065d8199c19ad84c970a4bbfd96db377c10"
           test "$application_id" = "com.lumokato.nunulo"
-          test "$version_code" = "4"
+          test "$version_code" = "5"
           grep -Fq "$AMAP_ANDROID_KEY_RELEASE" "$manifest"
       - name: Verify release tag matches app version
         if: startsWith(github.ref, 'refs/tags/')
@@ -86,7 +86,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          prerelease: true
+          prerelease: false
           generate_release_notes: true
           files: |
             ${{ runner.temp }}/nunulo-android.apk

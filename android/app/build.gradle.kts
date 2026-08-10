@@ -51,8 +51,8 @@ android {
         applicationId = "com.lumokato.nunulo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.2.0-test.2"
+        versionCode = 5
+        versionName = "0.2.0"
         manifestPlaceholders["amapApiKey"] = ""
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -124,11 +124,11 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling:1.11.2")
 }
 
-tasks.register("verifyPersonalReleaseConfiguration") {
+tasks.register("verifyReleaseConfiguration") {
     doLast {
         check(amapAndroidKeyDebug.isNotBlank()) { "AMAP_ANDROID_KEY_DEBUG is required" }
         check(amapAndroidKeyRelease.isNotBlank()) { "AMAP_ANDROID_KEY_RELEASE is required" }
-        check(releaseSigningConfigured) { "Personal release signing configuration is incomplete" }
-        check(file(releaseKeystorePath).isFile) { "Personal release keystore does not exist" }
+        check(releaseSigningConfigured) { "Release signing configuration is incomplete" }
+        check(file(releaseKeystorePath).isFile) { "Release keystore does not exist" }
     }
 }

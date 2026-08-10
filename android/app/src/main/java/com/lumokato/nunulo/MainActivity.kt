@@ -875,7 +875,7 @@ private fun NunuloApp() {
                 mineRecords = api.listCheckins(apiBase, tokens.accessToken, FeedScope.Mine)
                 feedScope = FeedScope.All.name
                 refreshLibraryState()
-                message = "测试账号已创建，欢迎 ${user.displayName}"
+                message = "账号已创建，欢迎 ${user.displayName}"
                 activeTab = AppTab.Feed.name
             } catch (error: Exception) {
                 message = error.message ?: "注册失败"
@@ -1562,7 +1562,7 @@ private fun NotificationsScreen(
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            SectionHeader("消息", "真实互动与测试成员", onReadAll, "全部已读")
+            SectionHeader("消息", "互动通知与成员", onReadAll, "全部已读")
         }
         if (notifications.isEmpty()) item { EmptyState("还没有消息", "点赞、评论和新的关注会显示在这里。") }
         items(notifications, key = { it.id }) { notice ->
@@ -1574,7 +1574,7 @@ private fun NotificationsScreen(
                 }
             }
         }
-        item { Text("测试成员", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+        item { Text("成员", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
         if (people.isEmpty()) item { EmptyState("还没有其他成员", "邀请好友注册后，可以在这里关注。") }
         items(people, key = { it.id }) { person ->
             JournalCard {
@@ -1583,7 +1583,7 @@ private fun NotificationsScreen(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(person.displayName, fontWeight = FontWeight.Bold)
-                        Text(person.bio ?: person.username?.let { "@$it" } ?: "测试成员", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(person.bio ?: person.username?.let { "@$it" } ?: "Nunulo 成员", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Button(onClick = { onFollow(person) }) { Text(if (person.following) "已关注" else "关注") }
@@ -1728,7 +1728,7 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
             }
             OutlinedTextField(if (registerMode) registerPassword else password, if (registerMode) ({ registerPassword = it }) else onPasswordChange, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
             Spacer(Modifier.height(14.dp))
-            Button(onClick = { if (registerMode) onRegister(registerName, displayName, registerInvite, registerPassword) else onLogin() }, enabled = !busy && if (registerMode) registerName.isNotBlank() && registerInvite.isNotBlank() && registerPassword.length >= 8 else loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "创建测试账号" else "登录") }
+            Button(onClick = { if (registerMode) onRegister(registerName, displayName, registerInvite, registerPassword) else onLogin() }, enabled = !busy && if (registerMode) registerName.isNotBlank() && registerInvite.isNotBlank() && registerPassword.length >= 8 else loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "创建账号" else "登录") }
             TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "已有账号，返回登录" else "使用邀请码注册") }
         }
         return
@@ -1759,7 +1759,7 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
                 ProfileMenuRow("个人地图", places.toString(), onOpenPlaces)
                 ProfileMenuRow("我的照片", records.size.toString(), onOpenPhotos)
                 ProfileMenuRow("标签浏览", tags.toString(), onOpenTags)
-                ProfileMenuRow("邀请测试成员", if (inviteCode.isBlank()) "生成" else inviteCode, onCreateInvite)
+                ProfileMenuRow("邀请朋友", if (inviteCode.isBlank()) "生成" else inviteCode, onCreateInvite)
                 ProfileMenuRow("重新同步数据", "同步", onRefresh)
                 ProfileMenuRow("检查定位权限", "检查", onPermissions)
             }
@@ -2552,7 +2552,7 @@ private fun parseTagItem(json: JSONObject): TagItem {
 
 private fun parseComment(json: JSONObject) = CommentItem(
     id = json.getString("id"),
-    displayName = json.optString("display_name", "测试成员"),
+    displayName = json.optString("display_name", "Nunulo 成员"),
     body = json.getString("body"),
     createdAt = json.nullableString("created_at"),
 )
@@ -2648,7 +2648,7 @@ internal fun shouldShowOwnUpload(scope: FeedScope, visibility: String): Boolean 
 internal fun visibilityLabel(value: String): String = when (value) {
     "private" -> "仅自己"
     "followers" -> "关注者"
-    "public" -> "所有测试成员"
+    "public" -> "所有成员"
     else -> "未知范围"
 }
 
