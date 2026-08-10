@@ -550,7 +550,7 @@ private fun NunuloApp() {
 
     var activeTab by rememberSaveable { mutableStateOf(AppTab.Feed.name) }
     var apiBase by rememberSaveable { mutableStateOf(prefs.getString("apiBase", DEFAULT_API_BASE) ?: DEFAULT_API_BASE) }
-    var loginName by rememberSaveable { mutableStateOf(prefs.getString("lastLogin", "lumokato") ?: "lumokato") }
+    var loginName by rememberSaveable { mutableStateOf(prefs.getString("lastLogin", "") ?: "") }
     var password by rememberSaveable { mutableStateOf("") }
     var accessToken by rememberSaveable { mutableStateOf(prefs.getString("accessToken", "") ?: "") }
     var refreshToken by rememberSaveable { mutableStateOf(prefs.getString("refreshToken", "") ?: "") }
@@ -1050,10 +1050,10 @@ private fun NunuloApp() {
         }
     }
 
-    fun reportRecord(record: CheckinItem) {
+    fun reportRecord(record: CheckinItem, reason: String) {
         scope.launch {
             try {
-                runWithTokenRefresh { token -> api.reportCheckin(apiBase, token, record.id, "Android 测试用户举报") }
+                runWithTokenRefresh { token -> api.reportCheckin(apiBase, token, record.id, reason) }
                 message = "举报已提交给管理员"
             } catch (error: Exception) {
                 message = error.message ?: "举报失败"
@@ -1314,7 +1314,7 @@ private fun NunuloApp() {
                 albums = albums,
                 onLike = { toggleLike(record) },
                 onComment = { addComment(record, it) },
-                onReport = { reportRecord(record) },
+                onReport = { reason -> reportRecord(record, reason) },
                 onAddToAlbum = { addRecordToAlbum(record, it) },
                 pendingDelete = pendingDeleteId == record.id,
             )
@@ -1355,7 +1355,7 @@ private fun TopStatusBar(user: AuthUser?, recordsCount: Int, message: String, bu
                 Column {
                     Text("Nunulo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, color = NunuloUi.Ink)
                     Text(
-                        user?.let { "${it.displayName} 的照片动态 · $recordsCount 张" } ?: "邀请制多人照片测试",
+                        user?.let { "${it.displayName} 的照片动态 · $recordsCount 张" } ?: "邀请制照片地图",
                         color = NunuloUi.Muted,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
@@ -2192,10 +2192,42 @@ private fun CheckinDetailDialog(
     onDelete: () -> Unit,
     onLike: () -> Unit,
     onComment: (String) -> Unit,
-    onReport: () -> Unit,
+    onReport: (String) -> Unit,
     onAddToAlbum: (AlbumItem) -> Unit,
 ) {
     var commentBody by rememberSaveable(record.id) { mutableStateOf("") }
+    var reportDialogOpen by rememberSaveable(record.id) { mutableStateOf(false) }
+    var reportReason by rememberSaveable(record.id) { mutableStateOf("") }
+    if (reportDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { reportDialogOpen = false },
+            title = { Text("举报这条记录") },
+            text = {
+                OutlinedTextField(
+                    value = reportReason,
+                    onValueChange = { if (it.length <= 120) reportReason = it },
+                    label = { Text("请说明原因") },
+                    supportingText = { Text("${reportReason.length}/120") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onReport(reportReason.trim())
+                        reportReason = ""
+                        reportDialogOpen = false
+                    },
+                    enabled = !busy && reportReason.isNotBlank(),
+                ) { Text("提交举报", color = NunuloUi.Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { reportDialogOpen = false }) { Text("取消") }
+            },
+        )
+        return
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(record.placeName.ifBlank { "未命名地点" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -2277,7 +2309,7 @@ private fun CheckinDetailDialog(
             if (record.canEdit) {
                 TextButton(onClick = onEdit, enabled = !busy) { Text("编辑") }
             } else {
-                TextButton(onClick = onReport, enabled = !busy) { Text("举报", color = NunuloUi.Danger) }
+                TextButton(onClick = { reportDialogOpen = true }, enabled = !busy) { Text("举报", color = NunuloUi.Danger) }
             }
         },
         dismissButton = {

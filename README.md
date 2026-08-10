@@ -4,10 +4,10 @@ Nunulo Android 日常客户端，使用 Kotlin、Jetpack Compose、高德地图 
 
 ## 当前状态
 
-- Nunulo 邀请制服务已上线，当前稳定版本为 `v0.2.0`；历史 APK 不代表当前版本。
+- Nunulo 邀请制服务已上线，当前稳定版本为 `v0.2.1`；历史 APK 不代表当前版本。
 - `v0.2.0-test.1` 的地图空状态错误写死上海，且必须在登记页手动点击定位；该版本已被当前修复取代，不能继续作为地图与定位验收基线。
 - 构建默认使用 `https://nunulo.lumokato.com`；需要切换本地或其他测试环境时，通过 Gradle 属性、环境变量或未提交的 `local.properties` 显式提供 `NUNULO_API_BASE_URL`。
-- 当前版本身份为 `0.2.0`（`versionCode=5`）；物理设备上的原生地图、拍照和断网恢复仍需持续回归。
+- 当前版本身份为 `0.2.1`（`versionCode=6`）；物理设备上的原生地图、拍照和断网恢复仍需持续回归。
 - 当前里程碑：真实 PostGIS CI、外部四角色多人链路、并发、R2 数据链与 Android 模拟器闭环已通过；继续完善物理设备拍照、定位、断网与进程恢复回归。
 - Android namespace、applicationId 和 Kotlin 包路径统一使用 `com.lumokato.nunulo`，不保留旧包升级兼容。
 
@@ -30,7 +30,7 @@ Android 现有五个入口：动态、地图、登记、消息、我的。动态
 ```properties
 AMAP_ANDROID_KEY_DEBUG=<绑定 com.lumokato.nunulo 与 debug SHA-1 的 Android Key>
 AMAP_ANDROID_KEY_RELEASE=<绑定 com.lumokato.nunulo 与 release SHA-1 的 Android Key>
-NUNULO_API_BASE_URL=<当前测试 API 基址>
+NUNULO_API_BASE_URL=<API 基址>
 ```
 
 debug 与 release 构建必须分别显式提供对应的 Android Key。Web/JS Key 不会被读取。没有 Key 时应用显示明确的地图不可用状态，不伪造地图。真实凭据、APK、照片和设备数据不进入仓库。
@@ -46,7 +46,7 @@ NUNULO_RELEASE_KEY_PASSWORD=<key password>
 
 当前稳定版不承担早期测试 APK 的原位升级兼容义务。release 必须使用独立、稳定的项目签名，并为该签名创建对应的高德 Android Key；不得为了覆盖历史 debug 安装而复用 debug 证书。
 
-推送 `v*` tag 时，GitHub Actions 在测试、签名、包名、版本号和地图 Key 校验通过后创建预发布 Release，并上传固定名称 `nunulo-android.apk` 与 `nunulo-android.sha256`。普通分支推送只保留 CI artifact，不会自动创建公开下载。
+推送与应用版本一致的 `v*` tag 时，GitHub Actions 在测试、签名、包名、版本号和地图 Key 校验通过后创建正式 Release，并上传固定名称 `nunulo-android.apk` 与 `nunulo-android.sha256`。普通分支推送只保留 CI artifact，不会自动创建公开下载。
 
 选择或拍摄的照片会复制到应用私有目录并立即保存草稿。应用被强停或上传中断后会恢复同一照片、地点、坐标、标签、备注和请求号；重复登记由 API 幂等保护。用户可在登记页手工修改经纬度或主动清除草稿。
 
