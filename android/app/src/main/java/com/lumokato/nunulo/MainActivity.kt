@@ -1608,7 +1608,7 @@ private fun MapScreen(records: List<CheckinItem>, scope: FeedScope, currentLocat
                 }
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(listOf(FeedScope.Mine, FeedScope.Following, FeedScope.Public)) { item ->
-                        StitchChip(label = item.label, selected = scope == item, onClick = { onScopeChange(item) })
+                        StitchChip(label = mapScopeLabel(item), selected = scope == item, onClick = { onScopeChange(item) })
                     }
                 }
             }
@@ -2741,6 +2741,13 @@ private fun parseStringArray(array: JSONArray?): List<String> {
 }
 
 internal fun checkinFeedPath(scope: FeedScope): String = "/api/checkins?scope=${scope.apiValue}&limit=120&offset=0"
+
+internal fun mapScopeLabel(scope: FeedScope): String = when (scope) {
+    FeedScope.Mine -> "我的"
+    FeedScope.Following -> "关注"
+    FeedScope.Public -> "发现"
+    FeedScope.All -> "全部"
+}
 
 internal fun shouldShowOwnUpload(scope: FeedScope, visibility: String): Boolean = when (scope) {
     FeedScope.All, FeedScope.Mine -> true

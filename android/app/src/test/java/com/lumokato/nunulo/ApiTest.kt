@@ -45,6 +45,14 @@ class ApiTest {
     }
 
     @Test
+    fun mapUsesProductLabelsWithoutChangingFeedLabels() {
+        assertEquals("公开", FeedScope.Public.label)
+        assertEquals("发现", mapScopeLabel(FeedScope.Public))
+        assertEquals("关注", mapScopeLabel(FeedScope.Following))
+        assertEquals("我的", mapScopeLabel(FeedScope.Mine))
+    }
+
+    @Test
     fun newUploadOnlyAppearsInCompatibleFeedScope() {
         assertTrue(shouldShowOwnUpload(FeedScope.All, "private"))
         assertTrue(shouldShowOwnUpload(FeedScope.Mine, "followers"))

@@ -4,10 +4,10 @@ Nunulo Android 日常客户端，使用 Kotlin、Jetpack Compose、高德地图 
 
 ## 当前状态
 
-- Nunulo 邀请制服务已上线，当前稳定版本为 `v0.2.3`；历史 APK 不代表当前版本。
+- Nunulo 邀请制服务已上线，当前稳定版本为 `v0.2.4`；历史 APK 不代表当前版本。
 - `v0.2.0-test.1` 的地图空状态错误写死上海，且必须在登记页手动点击定位；该版本已被当前修复取代，不能继续作为地图与定位验收基线。
 - 构建默认使用 `https://nunulo.lumokato.com`；需要切换本地或其他测试环境时，通过 Gradle 属性、环境变量或未提交的 `local.properties` 显式提供 `NUNULO_API_BASE_URL`。
-- 当前版本身份为 `0.2.3`（`versionCode=8`）；首次安装或会话失效时直接进入登录页，物理设备上的原生地图、拍照和断网恢复仍需持续回归。
+- 当前版本身份为 `0.2.4`（`versionCode=9`）；首次安装或会话失效时直接进入登录页，物理设备上的原生地图、拍照和断网恢复仍需持续回归。
 - 当前里程碑：真实 PostGIS CI、外部四角色多人链路、并发、R2 数据链与 Android 模拟器闭环已通过；继续完善物理设备拍照、定位、断网与进程恢复回归。
 - Android namespace、applicationId 和 Kotlin 包路径统一使用 `com.lumokato.nunulo`，不保留旧包升级兼容。
 
