@@ -3,11 +3,8 @@ package com.lumokato.nunulo
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.location.Location
-import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
@@ -18,7 +15,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardOptions
@@ -85,9 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -99,7 +93,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -108,6 +101,7 @@ import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView
 import com.amap.api.maps.MapsInitializer
+import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.LatLngBounds
 import com.amap.api.maps.model.MarkerOptions
@@ -146,6 +140,12 @@ private enum class AppTab(val title: String) {
     Publish("登记"),
     Notifications("消息"),
     Me("我的"),
+}
+
+private enum class LocationRequestPurpose {
+    Map,
+    Draft,
+    PermissionOnly,
 }
 
 internal enum class FeedScope(val apiValue: String, val label: String) {
@@ -566,6 +566,8 @@ private fun NunuloApp() {
     var inviteCode by rememberSaveable { mutableStateOf("") }
     var availableTags by remember { mutableStateOf<List<TagItem>>(emptyList()) }
     var draft by remember { mutableStateOf(UploadDraft()) }
+    var currentDeviceLocation by remember { mutableStateOf<MapPoint?>(null) }
+    var pendingLocationPurpose by remember { mutableStateOf<LocationRequestPurpose?>(null) }
     var avatarUri by remember { mutableStateOf<Uri?>(null) }
     var filters by remember { mutableStateOf(BrowseFilters()) }
     var pendingDeleteId by rememberSaveable { mutableStateOf("") }
@@ -658,14 +660,17 @@ private fun NunuloApp() {
             }
         }
     }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-        val granted = permissions.values.any { it }
-        if (granted) {
-            scope.launch {
-                val location = currentLocation(context)
-                if (location == null) {
-                    message = "暂时拿不到定位，请稍后重试或手动填写坐标"
-                } else {
+    val handleDeviceLocation: (LocationRequestPurpose, MapPoint?) -> Unit = { purpose, location ->
+        if (location == null) {
+            message = when (purpose) {
+                LocationRequestPurpose.Draft -> "暂时拿不到定位，请稍后重试或手动填写坐标"
+                LocationRequestPurpose.Map -> "暂时拿不到当前位置，请检查系统定位后重试"
+                LocationRequestPurpose.PermissionOnly -> "定位权限已开启，但暂时拿不到当前位置"
+            }
+        } else {
+            currentDeviceLocation = location
+            when (purpose) {
+                LocationRequestPurpose.Draft -> {
                     draft = draft.copy(
                         latitude = "%.6f".format(location.latitude),
                         longitude = "%.6f".format(location.longitude),
@@ -673,9 +678,26 @@ private fun NunuloApp() {
                     )
                     message = "已填入当前位置"
                 }
+                LocationRequestPurpose.Map -> message = "地图已定位到当前位置"
+                LocationRequestPurpose.PermissionOnly -> message = "定位权限已开启"
+            }
+        }
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        val purpose = pendingLocationPurpose ?: LocationRequestPurpose.PermissionOnly
+        pendingLocationPurpose = null
+        val granted = permissions.values.any { it }
+        if (granted) {
+            scope.launch {
+                val location = currentLocation(context)?.let { MapPoint(it.latitude, it.longitude) }
+                handleDeviceLocation(purpose, location)
             }
         } else {
-            message = "未开启定位权限，可继续手动填写坐标"
+            message = if (purpose == LocationRequestPurpose.Draft) {
+                "未开启定位权限，可继续手动填写坐标"
+            } else {
+                "未开启定位权限，地图无法显示当前位置"
+            }
         }
     }
 
@@ -867,34 +889,27 @@ private fun NunuloApp() {
         clearAuthState("已退出登录")
     }
 
-    fun requestCorePermissions() {
-        permissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-            )
-        )
-    }
-
-    fun useDeviceLocation() {
+    fun requestDeviceLocation(purpose: LocationRequestPurpose) {
+        pendingLocationPurpose = purpose
         if (!hasLocationPermission(context)) {
-            requestCorePermissions()
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                )
+            )
             return
         }
+        pendingLocationPurpose = null
         scope.launch {
-            val location = currentLocation(context)
-            if (location == null) {
-                message = "暂时拿不到定位，请稍后重试或手动填写坐标"
-            } else {
-                draft = draft.copy(
-                    latitude = "%.6f".format(location.latitude),
-                    longitude = "%.6f".format(location.longitude),
-                    locationSource = "device_location",
-                )
-                message = "已填入当前位置"
-            }
+            val location = currentLocation(context)?.let { MapPoint(it.latitude, it.longitude) }
+            handleDeviceLocation(purpose, location)
         }
     }
+
+    fun requestCorePermissions() = requestDeviceLocation(LocationRequestPurpose.PermissionOnly)
+
+    fun useDeviceLocation() = requestDeviceLocation(LocationRequestPurpose.Draft)
 
     fun takePhoto() {
         val uri = createCaptureUri(context)
@@ -1168,6 +1183,16 @@ private fun NunuloApp() {
         if (accessToken.isNotBlank()) refreshProfileAndRecords()
     }
 
+    LaunchedEffect(activeTab) {
+        when (AppTab.valueOf(activeTab)) {
+            AppTab.Map -> requestDeviceLocation(LocationRequestPurpose.Map)
+            AppTab.Publish -> if (draft.latitude.isBlank() && draft.longitude.isBlank()) {
+                requestDeviceLocation(LocationRequestPurpose.Draft)
+            }
+            else -> Unit
+        }
+    }
+
     DollTheme {
         Scaffold(
             bottomBar = {
@@ -1210,6 +1235,8 @@ private fun NunuloApp() {
                         )
                         AppTab.Map -> MapScreen(
                             records = filterRecords(mineRecords, filters),
+                            currentLocation = currentDeviceLocation,
+                            onLocate = { requestDeviceLocation(LocationRequestPurpose.Map) },
                             onPublish = { activeTab = AppTab.Publish.name },
                             onOpen = { openRecord(it) },
                         )
@@ -1499,11 +1526,17 @@ private fun FeedScreen(
 }
 
 @Composable
-private fun MapScreen(records: List<CheckinItem>, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
+private fun MapScreen(records: List<CheckinItem>, currentLocation: MapPoint?, onLocate: () -> Unit, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        AmapNativeMap(records = records, modifier = Modifier.fillMaxSize(), onOpen = onOpen)
+        AmapNativeMap(records = records, currentLocation = currentLocation, modifier = Modifier.fillMaxSize(), onOpen = onOpen)
         Surface(modifier = Modifier.align(Alignment.TopCenter).padding(12.dp), color = Color.White.copy(alpha = 0.96f), shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, NunuloUi.Hairline)) {
-            Text("我的照片地点", modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.padding(start = 14.dp, top = 9.dp, bottom = 9.dp)) {
+                    Text("我的照片地点", fontWeight = FontWeight.Bold)
+                    Text(currentLocation?.let { "当前位置 ${formatCoordinate(it.latitude, it.longitude)}" } ?: "正在获取当前位置", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = onLocate) { Text("重新定位") }
+            }
         }
         Surface(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(), color = Color.White.copy(alpha = 0.97f), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp), border = BorderStroke(0.5.dp, NunuloUi.Hairline)) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2035,14 +2068,15 @@ private fun UploadQueueCard(uploadPhase: String, validation: DraftValidation) {
 }
 
 @Composable
-private fun AmapNativeMap(records: List<CheckinItem>, modifier: Modifier = Modifier, onOpen: (CheckinItem) -> Unit) {
+private fun AmapNativeMap(records: List<CheckinItem>, currentLocation: MapPoint?, modifier: Modifier = Modifier, onOpen: (CheckinItem) -> Unit) {
     val mapRecords = remember(records) { records.filter { it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 && !(it.latitude == 0.0 && it.longitude == 0.0) } }
+    val validCurrentLocation = currentLocation?.takeIf { it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0 }
     val hasAmapConfig = BuildConfig.AMAP_ANDROID_KEY.isNotBlank()
     val primaryAbi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
     val supportsAmapNative = primaryAbi == "arm64-v8a" || primaryAbi == "armeabi-v7a"
     if (!hasAmapConfig || !supportsAmapNative) {
-        val reason = if (!hasAmapConfig) "地图配置待接入" else "模拟器使用坐标预览"
-        StaticMapFallback(records = mapRecords, modifier = modifier, reason = reason)
+        val reason = if (!hasAmapConfig) "高德 Android Key 未配置" else "当前模拟器 ABI 不支持高德原生地图"
+        StaticCoordinateFallback(records = mapRecords, currentLocation = validCurrentLocation, modifier = modifier, reason = reason)
         return
     }
 
@@ -2067,47 +2101,44 @@ private fun AmapNativeMap(records: List<CheckinItem>, modifier: Modifier = Modif
             mapView.onDestroy()
         }
     }
-    LaunchedEffect(mapView, mapRecords) {
-        configureAmap(mapView.map, mapRecords, onOpen)
+    LaunchedEffect(mapView, mapRecords, validCurrentLocation) {
+        configureAmap(mapView.map, mapRecords, validCurrentLocation, onOpen)
     }
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(NunuloUi.Placeholder)) {
         AndroidView(
             factory = { mapView },
-            update = { view -> configureAmap(view.map, mapRecords, onOpen) },
+            update = { view -> configureAmap(view.map, mapRecords, validCurrentLocation, onOpen) },
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
 
 @Composable
-private fun StaticMapFallback(records: List<CheckinItem>, modifier: Modifier, reason: String) {
-    Box(
+private fun StaticCoordinateFallback(records: List<CheckinItem>, currentLocation: MapPoint?, modifier: Modifier, reason: String) {
+    Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Brush.linearGradient(listOf(NunuloUi.BlueSoft, NunuloUi.GreenSoft, NunuloUi.CoralSoft)))
             .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val grid = Color(0x77FFFFFF)
-            repeat(5) { index ->
-                val y = size.height * (index + 1) / 6f
-                val x = size.width * (index + 1) / 6f
-                drawLine(grid, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
-                drawLine(grid, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
-            }
-            records.take(28).forEachIndexed { index, record ->
-                val x = (0.12f + mapRatio(record.longitude, index) * 0.76f) * size.width
-                val y = (0.16f + mapRatio(record.latitude, index + 11) * 0.68f) * size.height
-                drawCircle(Color(0x33E45B3F), radius = 13.dp.toPx(), center = Offset(x, y))
-                drawCircle(NunuloUi.Coral, radius = 5.dp.toPx(), center = Offset(x, y))
+        Text(reason, fontWeight = FontWeight.Black, color = NunuloUi.Ink)
+        Text("这里仅显示真实坐标，不绘制伪造地图或随机点。请在 ARM Android 设备上验收高德原生地图。", color = NunuloUi.Slate)
+        Surface(color = Color.White.copy(alpha = 0.88f), shape = RoundedCornerShape(4.dp)) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("当前位置", fontWeight = FontWeight.Bold)
+                Text(currentLocation?.let { formatCoordinate(it.latitude, it.longitude) } ?: "尚未取得定位", color = NunuloUi.Muted)
             }
         }
-        Text(reason, fontWeight = FontWeight.Black, color = NunuloUi.Ink, modifier = Modifier.align(Alignment.TopStart))
-        Text("${records.size} 个记录点", color = NunuloUi.Ink, modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("本人记录坐标（${records.size}）", fontWeight = FontWeight.Bold)
+        records.take(8).forEach { record ->
+            Text("${record.placeName.ifBlank { "未命名地点" }} · ${formatCoordinate(record.latitude, record.longitude)}", color = NunuloUi.Ink)
+        }
+        if (records.size > 8) Text("另有 ${records.size - 8} 个记录坐标", color = NunuloUi.Muted)
     }
 }
 
-private fun configureAmap(amap: AMap, records: List<CheckinItem>, onOpen: (CheckinItem) -> Unit) {
+private fun configureAmap(amap: AMap, records: List<CheckinItem>, currentLocation: MapPoint?, onOpen: (CheckinItem) -> Unit) {
     amap.uiSettings.isZoomControlsEnabled = false
     amap.uiSettings.isScaleControlsEnabled = true
     amap.uiSettings.isCompassEnabled = false
@@ -2127,16 +2158,24 @@ private fun configureAmap(amap: AMap, records: List<CheckinItem>, onOpen: (Check
         )
         markerRecords[marker.id] = record
     }
+    val currentPoint = currentLocation?.let { toAmapPoint(it.latitude, it.longitude) }?.let { LatLng(it.latitude, it.longitude) }
+    if (currentPoint != null) {
+        amap.addMarker(
+            MarkerOptions()
+                .position(currentPoint)
+                .title("当前位置")
+                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE)),
+        )
+    }
     amap.setOnMarkerClickListener { marker -> markerRecords[marker.id]?.let(onOpen); true }
-    if (points.isEmpty()) {
-        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(31.2304, 121.4737), 11f))
-    } else if (points.size == 1) {
-        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(points.first().second, 13f))
-    } else {
-        val bounds = LatLngBounds.builder().apply { points.forEach { include(it.second) } }.build()
+    val visiblePoints = points.map { it.second } + listOfNotNull(currentPoint)
+    if (visiblePoints.size == 1) {
+        amap.moveCamera(CameraUpdateFactory.newLatLngZoom(visiblePoints.first(), 14f))
+    } else if (visiblePoints.size > 1) {
+        val bounds = LatLngBounds.builder().apply { visiblePoints.forEach { include(it) } }.build()
         amap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 54))
     }
-    Log.d(AMAP_LOG_TAG, "native-map-ready mode=personal markers=${points.size}")
+    Log.d(AMAP_LOG_TAG, "native-map-ready mode=personal records=${points.size} current=${currentPoint != null}")
 }
 
 @Composable
@@ -2672,9 +2711,9 @@ private fun filterRecords(records: List<CheckinItem>, filters: BrowseFilters): L
     }
 }
 
-private data class MapPoint(val latitude: Double, val longitude: Double)
+internal data class MapPoint(val latitude: Double, val longitude: Double)
 
-private fun toAmapPoint(latitude: Double, longitude: Double): MapPoint {
+internal fun toAmapPoint(latitude: Double, longitude: Double): MapPoint {
     if (isOutsideChina(latitude, longitude)) return MapPoint(latitude, longitude)
     val dLat = transformLatitude(longitude - 105.0, latitude - 35.0)
     val dLng = transformLongitude(longitude - 105.0, latitude - 35.0)
@@ -2705,11 +2744,6 @@ private fun transformLongitude(x: Double, y: Double): Double {
     ret += (20.0 * sin(x * PI) + 40.0 * sin(x / 3.0 * PI)) * 2.0 / 3.0
     ret += (150.0 * sin(x / 12.0 * PI) + 300.0 * sin(x / 30.0 * PI)) * 2.0 / 3.0
     return ret
-}
-
-private fun mapRatio(value: Double, salt: Int): Float {
-    val mixed = abs(value * 997.0 + salt * 37.0)
-    return ((mixed % 100.0) / 100.0).toFloat()
 }
 
 private fun formatCoordinate(latitude: Double, longitude: Double): String = "%.5f, %.5f".format(latitude, longitude)

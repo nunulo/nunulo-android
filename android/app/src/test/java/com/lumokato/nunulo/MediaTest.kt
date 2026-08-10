@@ -67,8 +67,8 @@ class MediaTest {
         val fields = pendingUploadFields(
             UploadDraft(
                 placeName = "人民广场",
-                latitude = "31.2304",
-                longitude = "121.4737",
+                latitude = "39.901568",
+                longitude = "116.422600",
                 tags = "娃娃,测试",
                 visibility = "followers",
             )
