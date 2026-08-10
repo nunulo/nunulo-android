@@ -548,7 +548,11 @@ private fun NunuloApp() {
     val tokenRefreshCoordinator = remember { TokenRefreshCoordinator() }
     val scope = rememberCoroutineScope()
 
-    var activeTab by rememberSaveable { mutableStateOf(AppTab.Feed.name) }
+    var activeTab by rememberSaveable {
+        mutableStateOf(
+            if (prefs.getString("accessToken", "").isNullOrBlank()) AppTab.Me.name else AppTab.Feed.name,
+        )
+    }
     var apiBase by rememberSaveable { mutableStateOf(prefs.getString("apiBase", DEFAULT_API_BASE) ?: DEFAULT_API_BASE) }
     var loginName by rememberSaveable { mutableStateOf(prefs.getString("lastLogin", "") ?: "") }
     var password by rememberSaveable { mutableStateOf("") }
