@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
 private enum class AppTab(val title: String) {
     Feed("动态"),
     Map("地图"),
-    Publish("登记"),
+    Publish("记录"),
     Notifications("消息"),
     Me("我的"),
 }
@@ -208,6 +208,13 @@ private data class AuxiliaryState(
     val people: List<PersonItem>,
     val albums: List<AlbumItem>,
     val exports: List<ExportItem>,
+)
+
+private data class PrimaryState(
+    val user: AuthUser,
+    val feedItems: List<CheckinItem>,
+    val ownItems: List<CheckinItem>,
+    val mapItems: List<CheckinItem>,
 )
 
 private data class TagItem(
@@ -553,7 +560,7 @@ private fun NunuloApp() {
             if (prefs.getString("accessToken", "").isNullOrBlank()) AppTab.Me.name else AppTab.Feed.name,
         )
     }
-    var apiBase by rememberSaveable { mutableStateOf(prefs.getString("apiBase", DEFAULT_API_BASE) ?: DEFAULT_API_BASE) }
+    val apiBase = DEFAULT_API_BASE
     var loginName by rememberSaveable { mutableStateOf(prefs.getString("lastLogin", "") ?: "") }
     var password by rememberSaveable { mutableStateOf("") }
     var accessToken by rememberSaveable { mutableStateOf(prefs.getString("accessToken", "") ?: "") }
@@ -561,7 +568,9 @@ private fun NunuloApp() {
     var currentUser by remember { mutableStateOf<AuthUser?>(null) }
     var records by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
     var mineRecords by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
+    var mapRecords by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
     var feedScope by rememberSaveable { mutableStateOf(FeedScope.All.name) }
+    var mapScope by rememberSaveable { mutableStateOf(FeedScope.Mine.name) }
     var notifications by remember { mutableStateOf<List<NotificationItem>>(emptyList()) }
     var people by remember { mutableStateOf<List<PersonItem>>(emptyList()) }
     var albums by remember { mutableStateOf<List<AlbumItem>>(emptyList()) }
@@ -579,7 +588,7 @@ private fun NunuloApp() {
     var editingRecord by remember { mutableStateOf<CheckinItem?>(null) }
     var uploadPhase by rememberSaveable { mutableStateOf("idle") }
     var uploadProgress by rememberSaveable { mutableStateOf(0) }
-    var message by rememberSaveable { mutableStateOf("准备记录今天的娃娃出行") }
+    var message by rememberSaveable { mutableStateOf("记录今天的照片与地点") }
     var busy by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -588,7 +597,7 @@ private fun NunuloApp() {
             draft = pending.draft
             uploadPhase = if (pending.attempted) "failed" else "idle"
             message = if (pending.attempted) {
-                "上次上传被中断，草稿已恢复；再次登记会安全重试"
+                "上次发布被中断，草稿已恢复；再次发布会安全重试"
             } else {
                 "未完成草稿已恢复"
             }
@@ -720,6 +729,7 @@ private fun NunuloApp() {
         currentUser = null
         records = emptyList()
         mineRecords = emptyList()
+        mapRecords = emptyList()
         notifications = emptyList()
         people = emptyList()
         albums = emptyList()
@@ -794,18 +804,26 @@ private fun NunuloApp() {
         busy = true
         scope.launch {
             try {
-                val (user, feedItems, ownItems) = runWithTokenRefresh { token ->
+                val state = runWithTokenRefresh { token ->
                     val selectedScope = FeedScope.valueOf(feedScope)
                     val selectedItems = api.listCheckins(apiBase, token, selectedScope)
-                    Triple(
-                        api.me(apiBase, token),
-                        selectedItems,
-                        if (selectedScope == FeedScope.Mine) selectedItems else api.listCheckins(apiBase, token, FeedScope.Mine),
+                    val ownItems = if (selectedScope == FeedScope.Mine) selectedItems else api.listCheckins(apiBase, token, FeedScope.Mine)
+                    val selectedMapScope = FeedScope.valueOf(mapScope)
+                    PrimaryState(
+                        user = api.me(apiBase, token),
+                        feedItems = selectedItems,
+                        ownItems = ownItems,
+                        mapItems = when (selectedMapScope) {
+                            FeedScope.Mine -> ownItems
+                            selectedScope -> selectedItems
+                            else -> api.listCheckins(apiBase, token, selectedMapScope)
+                        },
                     )
                 }
-                currentUser = user
-                records = feedItems
-                mineRecords = ownItems
+                currentUser = state.user
+                records = state.feedItems
+                mineRecords = state.ownItems
+                mapRecords = state.mapItems
                 refreshLibraryState()
                 pendingDeleteId = ""
                 message = "已同步 ${records.size} 条记录"
@@ -840,6 +858,28 @@ private fun NunuloApp() {
         }
     }
 
+    fun switchMapScope(next: FeedScope) {
+        val previous = FeedScope.valueOf(mapScope)
+        mapScope = next.name
+        if (accessToken.isBlank()) return
+        busy = true
+        scope.launch {
+            try {
+                mapRecords = if (next == FeedScope.Mine) {
+                    mineRecords
+                } else {
+                    runWithTokenRefresh { token -> api.listCheckins(apiBase, token, next) }
+                }
+                message = "已切换到${next.label}地图"
+            } catch (error: Exception) {
+                mapScope = previous.name
+                message = error.message ?: "地图加载失败"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun login() {
         busy = true
         scope.launch {
@@ -854,7 +894,9 @@ private fun NunuloApp() {
                 password = ""
                 records = api.listCheckins(apiBase, tokens.accessToken, FeedScope.All)
                 mineRecords = api.listCheckins(apiBase, tokens.accessToken, FeedScope.Mine)
+                mapRecords = mineRecords
                 feedScope = FeedScope.All.name
+                mapScope = FeedScope.Mine.name
                 refreshLibraryState()
                 pendingDeleteId = ""
                 message = "欢迎回来，${user.displayName}"
@@ -877,7 +919,9 @@ private fun NunuloApp() {
                 persistTokens(tokens.accessToken, tokens.refreshToken.orEmpty())
                 records = api.listCheckins(apiBase, tokens.accessToken, FeedScope.All)
                 mineRecords = api.listCheckins(apiBase, tokens.accessToken, FeedScope.Mine)
+                mapRecords = mineRecords
                 feedScope = FeedScope.All.name
+                mapScope = FeedScope.Mine.name
                 refreshLibraryState()
                 message = "账号已创建，欢迎 ${user.displayName}"
                 activeTab = AppTab.Feed.name
@@ -957,6 +1001,7 @@ private fun NunuloApp() {
                     }
                 }
                 mineRecords = listOf(uploaded) + mineRecords.filterNot { it.id == uploaded.id }
+                if (FeedScope.valueOf(mapScope) == FeedScope.Mine) mapRecords = mineRecords
                 val selectedScope = FeedScope.valueOf(feedScope)
                 records = runCatching {
                     runWithTokenRefresh { token -> api.listCheckins(apiBase, token, FeedScope.valueOf(feedScope)) }
@@ -975,12 +1020,12 @@ private fun NunuloApp() {
                 pendingDeleteId = ""
                 uploadPhase = "done"
                 uploadProgress = 100
-                message = "上传成功：${uploaded.placeName}"
+                message = "照片已发布：${uploaded.placeName}"
                 activeTab = AppTab.Feed.name
             } catch (error: Exception) {
                 uploadPhase = "failed"
                 uploadProgress = 0
-                message = error.message ?: "上传失败"
+                message = error.message ?: "发布失败"
                 Log.e(APP_LOG_TAG, "Upload failed for ${uploadDraft.photoUri}", error)
             } finally {
                 busy = false
@@ -1005,6 +1050,7 @@ private fun NunuloApp() {
                 runWithTokenRefresh { token -> api.deleteCheckin(apiBase, token, record.id) }
                 records = records.filterNot { it.id == record.id }
                 mineRecords = mineRecords.filterNot { it.id == record.id }
+                mapRecords = mapRecords.filterNot { it.id == record.id }
                 currentUser = runCatching { runWithTokenRefresh { token -> api.me(apiBase, token) } }.getOrNull() ?: currentUser
                 refreshLibraryState()
                 pendingDeleteId = ""
@@ -1032,6 +1078,7 @@ private fun NunuloApp() {
                 val updated = runWithTokenRefresh { token -> api.setLike(apiBase, token, record) }
                 records = records.map { if (it.id == updated.id) updated else it }
                 mineRecords = mineRecords.map { if (it.id == updated.id) updated else it }
+                mapRecords = mapRecords.map { if (it.id == updated.id) updated else it }
                 if (selectedRecord?.id == updated.id) selectedRecord = updated
             } catch (error: Exception) {
                 message = error.message ?: "互动失败"
@@ -1047,6 +1094,7 @@ private fun NunuloApp() {
                 val updated = record.copy(commentCount = record.commentCount + 1)
                 records = records.map { if (it.id == updated.id) updated else it }
                 mineRecords = mineRecords.map { if (it.id == updated.id) updated else it }
+                mapRecords = mapRecords.map { if (it.id == updated.id) updated else it }
                 selectedRecord = updated
             } catch (error: Exception) {
                 message = error.message ?: "评论失败"
@@ -1082,6 +1130,7 @@ private fun NunuloApp() {
                 runWithTokenRefresh { token -> api.blockPerson(apiBase, token, person.id) }
                 people = people.filterNot { it.id == person.id }
                 records = records.filterNot { it.userId == person.id }
+                mapRecords = mapRecords.filterNot { it.userId == person.id }
                 if (selectedRecord?.userId == person.id) selectedRecord = null
                 message = "已屏蔽 ${person.displayName}"
             } catch (error: Exception) {
@@ -1171,6 +1220,10 @@ private fun NunuloApp() {
                 val updated = runWithTokenRefresh { token -> api.updateCheckin(apiBase, token, record, edit) }
                 records = records.map { if (it.id == updated.id) updated else it }
                 mineRecords = listOf(updated) + mineRecords.filterNot { it.id == updated.id }
+                mapRecords = mapRecords.map { if (it.id == updated.id) updated else it }
+                if (FeedScope.valueOf(mapScope) == FeedScope.Mine && mapRecords.none { it.id == updated.id }) {
+                    mapRecords = listOf(updated) + mapRecords
+                }
                 selectedRecord = updated
                 editingRecord = null
                 refreshLibraryState()
@@ -1238,8 +1291,10 @@ private fun NunuloApp() {
                             onLike = { toggleLike(it) },
                         )
                         AppTab.Map -> MapScreen(
-                            records = filterRecords(mineRecords, filters),
+                            records = filterRecords(if (FeedScope.valueOf(mapScope) == FeedScope.Mine) mineRecords else mapRecords, filters),
+                            scope = FeedScope.valueOf(mapScope),
                             currentLocation = currentDeviceLocation,
+                            onScopeChange = { switchMapScope(it) },
                             onLocate = { requestDeviceLocation(LocationRequestPurpose.Map) },
                             onPublish = { activeTab = AppTab.Publish.name },
                             onOpen = { openRecord(it) },
@@ -1278,7 +1333,6 @@ private fun NunuloApp() {
                             avatarUri = avatarUri,
                             busy = busy,
                             onLoginNameChange = { loginName = it },
-                            onApiBaseChange = { apiBase = it },
                             onPasswordChange = { password = it },
                             onLogin = { login() },
                             onRegister = { username, displayName, invite, newPassword -> register(username, displayName, invite, newPassword) },
@@ -1485,7 +1539,7 @@ private fun FeedScreen(
             Surface(color = NunuloUi.Surface, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("照片动态", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    TextButton(onClick = onPublish) { Text("登记") }
+                    TextButton(onClick = onPublish) { Text("记录") }
                 }
             }
         }
@@ -1530,26 +1584,43 @@ private fun FeedScreen(
 }
 
 @Composable
-private fun MapScreen(records: List<CheckinItem>, currentLocation: MapPoint?, onLocate: () -> Unit, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
+private fun MapScreen(records: List<CheckinItem>, scope: FeedScope, currentLocation: MapPoint?, onScopeChange: (FeedScope) -> Unit, onLocate: () -> Unit, onPublish: () -> Unit, onOpen: (CheckinItem) -> Unit) {
+    val scopeTitle = when (scope) {
+        FeedScope.Mine -> "我的地图"
+        FeedScope.Following -> "关注地图"
+        else -> "发现地图"
+    }
+    val scopeHint = when (scope) {
+        FeedScope.Mine -> currentLocation?.let { "当前位置 ${formatCoordinate(it.latitude, it.longitude)}" } ?: "正在获取当前位置"
+        FeedScope.Following -> "关注成员分享的可见地点"
+        else -> "所有成员公开分享的地点"
+    }
     Box(Modifier.fillMaxSize()) {
         AmapNativeMap(records = records, currentLocation = currentLocation, modifier = Modifier.fillMaxSize(), onOpen = onOpen)
         Surface(modifier = Modifier.align(Alignment.TopCenter).padding(12.dp), color = Color.White.copy(alpha = 0.96f), shape = RoundedCornerShape(4.dp), border = BorderStroke(1.dp, NunuloUi.Hairline)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.padding(start = 14.dp, top = 9.dp, bottom = 9.dp)) {
-                    Text("我的照片地点", fontWeight = FontWeight.Bold)
-                    Text(currentLocation?.let { "当前位置 ${formatCoordinate(it.latitude, it.longitude)}" } ?: "正在获取当前位置", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(scopeTitle, fontWeight = FontWeight.Bold)
+                        Text(scopeHint, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = onLocate) { Text("定位到我") }
                 }
-                TextButton(onClick = onLocate) { Text("重新定位") }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf(FeedScope.Mine, FeedScope.Following, FeedScope.Public)) { item ->
+                        StitchChip(label = item.label, selected = scope == item, onClick = { onScopeChange(item) })
+                    }
+                }
             }
         }
         Surface(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(), color = Color.White.copy(alpha = 0.97f), shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp), border = BorderStroke(0.5.dp, NunuloUi.Hairline)) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("个人照片地图", fontWeight = FontWeight.Bold)
-                    Text("${records.size} 个记录地点", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(scopeTitle, fontWeight = FontWeight.Bold)
+                    Text(if (records.isEmpty()) "当前范围还没有可见地点" else "${records.size} 条照片记录", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                Surface(color = NunuloUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPublish)) {
-                    Text("在这里登记", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
+                if (scope == FeedScope.Mine) Surface(color = NunuloUi.Coral, shape = RoundedCornerShape(4.dp), modifier = Modifier.clickable(onClick = onPublish)) {
+                    Text("记录照片", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
                 }
             }
         }
@@ -1607,7 +1678,7 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
         item { PhotoPickerCard(uri = draft.photoUri, onPick = onPick, onCamera = onCamera) }
         item {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("登记", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = NunuloUi.Ink)
+                Text("记录照片", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = NunuloUi.Ink)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(draft.placeName, { onDraftChange(draft.copy(placeName = it)) }, label = { Text("地点") }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(4.dp))
                     Spacer(Modifier.width(8.dp))
@@ -1661,7 +1732,7 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
                 PublishReadinessCard(validation)
                 if (busy || uploadPhase == "failed") UploadPhaseBar(uploadPhase, busy, uploadProgress, uploadMessage)
                 Surface(color = if (!busy && validation.ready) NunuloUi.Coral else NunuloUi.Placeholder, shape = RoundedCornerShape(4.dp), modifier = Modifier.fillMaxWidth().height(48.dp).clickable(enabled = !busy && validation.ready, onClick = onUpload)) {
-                    Box(contentAlignment = Alignment.Center) { Text(if (busy) "上传中" else "登记", color = if (!busy && validation.ready) Color.White else NunuloUi.Muted, fontWeight = FontWeight.Bold) }
+                    Box(contentAlignment = Alignment.Center) { Text(if (busy) "发布中" else "发布照片", color = if (!busy && validation.ready) Color.White else NunuloUi.Muted, fontWeight = FontWeight.Bold) }
                 }
             }
         }
@@ -1704,7 +1775,7 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, albums: List<AlbumItem>, exports: List<ExportItem>, inviteCode: String, avatarUri: Uri?, apiBase: String, api: NunuloApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onApiBaseChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onRegister: (String, String, String, String) -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, onCreateInvite: () -> Unit, onCreateAlbum: (String) -> Unit, onCreateExport: () -> Unit, onDownloadExport: (ExportItem) -> Unit, message: String) {
+private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, albums: List<AlbumItem>, exports: List<ExportItem>, inviteCode: String, avatarUri: Uri?, apiBase: String, api: NunuloApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onRegister: (String, String, String, String) -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, onCreateInvite: () -> Unit, onCreateAlbum: (String) -> Unit, onCreateExport: () -> Unit, onDownloadExport: (ExportItem) -> Unit, message: String) {
     val places = records.map { it.placeName }.filter { it.isNotBlank() }.distinct().size
     val tags = records.flatMap { it.tags }.distinct().size
     if (user == null) {
@@ -1726,10 +1797,6 @@ private fun MeScreen(loginName: String, password: String, user: AuthUser?, recor
                 OutlinedTextField(loginName, onLoginNameChange, label = { Text("邮箱或用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             }
             Spacer(Modifier.height(10.dp))
-            if (BuildConfig.DEBUG) {
-                OutlinedTextField(apiBase, onApiBaseChange, label = { Text("调试 API 地址") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Spacer(Modifier.height(10.dp))
-            }
             OutlinedTextField(if (registerMode) registerPassword else password, if (registerMode) ({ registerPassword = it }) else onPasswordChange, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
             Spacer(Modifier.height(14.dp))
             Button(onClick = { if (registerMode) onRegister(registerName, displayName, registerInvite, registerPassword) else onLogin() }, enabled = !busy && if (registerMode) registerName.isNotBlank() && registerInvite.isNotBlank() && registerPassword.length >= 8 else loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "创建账号" else "登录") }
@@ -1857,7 +1924,7 @@ private fun ProfileMenuRow(title: String, value: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SectionHeader(title: String, subtitle: String, onAction: () -> Unit, actionLabel: String = "登记") {
+private fun SectionHeader(title: String, subtitle: String, onAction: () -> Unit, actionLabel: String = "记录") {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, color = NunuloUi.Ink, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
@@ -1977,8 +2044,8 @@ private fun PublishReadinessCard(validation: DraftValidation) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
-                    Text("登记检查", color = NunuloUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
-                    Text(if (validation.ready) "信息完整，可以登记" else validation.missingText, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("发布前确认", color = NunuloUi.Ink, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+                    Text(if (validation.ready) "信息完整，可以发布" else validation.missingText, color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 Text("仅自己可见", color = NunuloUi.Blue, fontWeight = FontWeight.Bold)
             }
@@ -2023,7 +2090,7 @@ private fun ReadinessStep(label: String, done: Boolean, modifier: Modifier = Mod
 private fun UploadPhaseBar(uploadPhase: String, busy: Boolean, uploadProgress: Int, uploadMessage: String) {
     val text = when (uploadPhase) {
         "preparing" -> "正在准备图片"
-        "uploading" -> "正在登记照片"
+        "uploading" -> "正在发布照片"
         "done" -> "最近一次上传已完成"
         "failed" -> "最近一次上传失败，可调整后重试"
         else -> "选择图片后继续填写地点和标签"
@@ -2051,16 +2118,16 @@ private fun UploadPhaseBar(uploadPhase: String, busy: Boolean, uploadProgress: I
 private fun UploadQueueCard(uploadPhase: String, validation: DraftValidation) {
     val queueText = when (uploadPhase) {
         "preparing" -> "正在处理图片"
-        "uploading" -> "登记中"
-        "done" -> "已登记"
-        "failed" -> "登记失败"
+        "uploading" -> "发布中"
+        "done" -> "已发布"
+        "failed" -> "发布失败"
         else -> if (validation.hasPhoto) "照片已选择" else "等待选择照片"
     }
     val detail = when (uploadPhase) {
         "failed" -> validation.missingText.takeIf { !validation.ready } ?: "检查网络后再试。"
         "done" -> "照片已进入首页。"
         "uploading" -> "保持当前页面，完成后会回到首页。"
-        else -> "登记前确认照片、地点和标签。"
+        else -> "发布前确认照片、地点和标签。"
     }
     Column(
         modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(NunuloUi.PaperTint).padding(12.dp),
@@ -2179,7 +2246,7 @@ private fun configureAmap(amap: AMap, records: List<CheckinItem>, currentLocatio
         val bounds = LatLngBounds.builder().apply { visiblePoints.forEach { include(it) } }.build()
         amap.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, 54))
     }
-    Log.d(AMAP_LOG_TAG, "native-map-ready mode=personal records=${points.size} current=${currentPoint != null}")
+    Log.d(AMAP_LOG_TAG, "native-map-ready records=${points.size} current=${currentPoint != null}")
 }
 
 @Composable
