@@ -70,11 +70,13 @@ class MediaTest {
                 latitude = "39.901568",
                 longitude = "116.422600",
                 tags = "娃娃,测试",
-                visibility = "followers",
+                visibility = "public",
+                publicShowcase = true,
             )
         )
 
-        assertEquals("followers", fields["visibility"])
+        assertEquals("public", fields["visibility"])
+        assertEquals("true", fields["public_showcase"])
         assertEquals("人民广场", fields["place_name"])
         assertEquals("娃娃,测试", fields["tags"])
     }

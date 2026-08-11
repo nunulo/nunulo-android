@@ -210,6 +210,7 @@ internal fun pendingUploadFields(draft: UploadDraft): Map<String, String> = link
     "note" to draft.note,
     "tags" to draft.tags,
     "visibility" to draft.visibility,
+    "public_showcase" to draft.publicShowcase.toString(),
 )
 
 internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
@@ -233,6 +234,7 @@ internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
                 note = payload.optString("note"),
                 tags = payload.optString("tags", "娃娃"),
                 visibility = payload.optString("visibility", "private"),
+                publicShowcase = payload.optBoolean("public_showcase", false),
             ),
         )
     }.getOrElse {

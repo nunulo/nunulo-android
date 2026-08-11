@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
@@ -179,6 +180,7 @@ internal data class CheckinItem(
     val takenAt: String?,
     val source: String,
     val visibility: String = "private",
+    val publicShowcase: Boolean = false,
     val canEdit: Boolean = true,
     val liked: Boolean = false,
     val likeCount: Int = 0,
@@ -195,6 +197,7 @@ private data class CheckinEditDraft(
     val note: String,
     val tags: String,
     val visibility: String = "private",
+    val publicShowcase: Boolean = false,
 )
 
 private data class CommentItem(val id: String, val displayName: String, val body: String, val createdAt: String?)
@@ -224,6 +227,14 @@ private data class TagItem(
 
 private data class AuthTokens(val accessToken: String, val refreshToken: String?)
 
+private data class PublicConfig(
+    val publicRegistrationEnabled: Boolean,
+    val termsVersion: String,
+    val privacyVersion: String,
+    val termsUrl: String,
+    val privacyUrl: String,
+)
+
 internal data class UploadDraft(
     val photoUri: Uri? = null,
     val placeName: String = "",
@@ -233,6 +244,7 @@ internal data class UploadDraft(
     val note: String = "",
     val tags: String = "",
     val visibility: String = "private",
+    val publicShowcase: Boolean = false,
 )
 
 internal data class PendingUpload(
@@ -311,18 +323,42 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
         user to tokens
     }
 
-    suspend fun register(apiBase: String, username: String, displayName: String, inviteCode: String, password: String): Pair<AuthUser, AuthTokens> = withContext(Dispatchers.IO) {
+    suspend fun publicConfig(apiBase: String): PublicConfig = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(apiUrl(apiBase, "/api/public/config")).get().build()
+        val json = http.executeJson(request)
+        PublicConfig(
+            publicRegistrationEnabled = json.optBoolean("public_registration_enabled"),
+            termsVersion = json.optString("terms_version"),
+            privacyVersion = json.optString("privacy_version"),
+            termsUrl = json.optString("terms_url", "/terms/"),
+            privacyUrl = json.optString("privacy_url", "/privacy/"),
+        )
+    }
+
+    suspend fun register(apiBase: String, username: String, displayName: String, inviteCode: String, password: String, acceptedPolicies: Boolean, config: PublicConfig?): Pair<AuthUser, AuthTokens> = withContext(Dispatchers.IO) {
         val payload = JSONObject()
             .put("username", username.trim())
             .put("display_name", displayName.trim())
-            .put("invite_code", inviteCode.trim())
             .put("password", password)
             .put("device_name", "Android App")
             .put("device_type", "android")
-            .toString()
+        val normalizedInvite = inviteCode.trim()
+        if (normalizedInvite.isNotBlank()) {
+            payload.put("invite_code", normalizedInvite)
+        }
+        val currentConfig = config ?: throw IllegalStateException("注册配置尚未加载，请稍后重试")
+        if (normalizedInvite.isBlank()) {
+            if (!currentConfig.publicRegistrationEnabled) throw IllegalStateException("公开注册暂未开放，请填写邀请码")
+        }
+        if (!acceptedPolicies) throw IllegalArgumentException("请先同意服务条款和隐私政策")
+        payload
+            .put("accepted_terms", true)
+            .put("accepted_privacy", true)
+            .put("terms_version", currentConfig.termsVersion)
+            .put("privacy_version", currentConfig.privacyVersion)
         val request = Request.Builder()
             .url(apiUrl(apiBase, "/api/auth/register"))
-            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
         val json = http.executeJson(request)
         parseAuthUser(json.getJSONObject("user")) to AuthTokens(json.getString("access_token"), json.getString("refresh_token"))
@@ -385,6 +421,7 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
             .addFormDataPart("source", "android_capture")
             .addFormDataPart("location_source", draft.locationSource)
             .addFormDataPart("visibility", draft.visibility)
+            .addFormDataPart("public_showcase", draft.publicShowcase.toString())
             .addFormDataPart("photo", media.filename, media.requestBody)
             .build()
         val request = authorizedBuilder(apiBase, "/api/checkins", token).post(body).build()
@@ -412,6 +449,7 @@ private class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClie
             .put("source", record.source.ifBlank { "android_capture" })
             .put("location_source", "manual")
             .put("visibility", draft.visibility)
+            .put("public_showcase", draft.publicShowcase)
             .toString()
         val request = authorizedBuilder(apiBase, "/api/checkins/${record.id}", token)
             .patch(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
@@ -566,6 +604,7 @@ private fun NunuloApp() {
     var accessToken by rememberSaveable { mutableStateOf(prefs.getString("accessToken", "") ?: "") }
     var refreshToken by rememberSaveable { mutableStateOf(prefs.getString("refreshToken", "") ?: "") }
     var currentUser by remember { mutableStateOf<AuthUser?>(null) }
+    var publicConfig by remember { mutableStateOf<PublicConfig?>(null) }
     var records by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
     var mineRecords by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
     var mapRecords by remember { mutableStateOf<List<CheckinItem>>(emptyList()) }
@@ -592,6 +631,7 @@ private fun NunuloApp() {
     var busy by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        publicConfig = runCatching { api.publicConfig(apiBase) }.getOrNull()
         val pending = loadPendingUpload(prefs)
         if (pending != null) {
             draft = pending.draft
@@ -909,11 +949,11 @@ private fun NunuloApp() {
         }
     }
 
-    fun register(username: String, displayName: String, invite: String, newPassword: String) {
+    fun register(username: String, displayName: String, invite: String, newPassword: String, acceptedPolicies: Boolean) {
         busy = true
         scope.launch {
             try {
-                val (user, tokens) = api.register(apiBase, username, displayName, invite, newPassword)
+                val (user, tokens) = api.register(apiBase, username, displayName, invite, newPassword, acceptedPolicies, publicConfig)
                 currentUser = user
                 loginName = username
                 persistTokens(tokens.accessToken, tokens.refreshToken.orEmpty())
@@ -1335,7 +1375,8 @@ private fun NunuloApp() {
                             onLoginNameChange = { loginName = it },
                             onPasswordChange = { password = it },
                             onLogin = { login() },
-                            onRegister = { username, displayName, invite, newPassword -> register(username, displayName, invite, newPassword) },
+                            publicConfig = publicConfig,
+                            onRegister = { username, displayName, invite, newPassword, acceptedPolicies -> register(username, displayName, invite, newPassword, acceptedPolicies) },
                             onLogout = { logout() },
                             onPermissions = { requestCorePermissions() },
                             onPickAvatar = { avatarPickerLauncher.launch("image/*") },
@@ -1719,11 +1760,18 @@ private fun PublishScreen(draft: UploadDraft, busy: Boolean, uploadPhase: String
                         items(listOf("private", "followers", "public")) { value ->
                             FilterChip(
                                 selected = draft.visibility == value,
-                                onClick = { onDraftChange(draft.copy(visibility = value)) },
+                                onClick = { onDraftChange(draft.copy(visibility = value, publicShowcase = if (value == "public") draft.publicShowcase else false)) },
                                 label = { Text(visibilityLabel(value)) },
                             )
                         }
                     }
+                    FilterChip(
+                        selected = draft.publicShowcase,
+                        enabled = draft.visibility == "public",
+                        onClick = { onDraftChange(draft.copy(publicShowcase = !draft.publicShowcase)) },
+                        label = { Text("互联网匿名展示") },
+                    )
+                    Text("仅展示缩略图、区域级位置和公开文字，可随时撤回", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("非本人查看时位置会降低精度", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
@@ -1775,32 +1823,50 @@ private fun ProfileStat(label: String, value: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, albums: List<AlbumItem>, exports: List<ExportItem>, inviteCode: String, avatarUri: Uri?, apiBase: String, api: NunuloApi, busy: Boolean, onLoginNameChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onRegister: (String, String, String, String) -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, onCreateInvite: () -> Unit, onCreateAlbum: (String) -> Unit, onCreateExport: () -> Unit, onDownloadExport: (ExportItem) -> Unit, message: String) {
+private fun MeScreen(loginName: String, password: String, user: AuthUser?, records: List<CheckinItem>, albums: List<AlbumItem>, exports: List<ExportItem>, inviteCode: String, avatarUri: Uri?, apiBase: String, api: NunuloApi, publicConfig: PublicConfig?, busy: Boolean, onLoginNameChange: (String) -> Unit, onPasswordChange: (String) -> Unit, onLogin: () -> Unit, onRegister: (String, String, String, String, Boolean) -> Unit, onLogout: () -> Unit, onPermissions: () -> Unit, onPickAvatar: () -> Unit, onRefresh: () -> Unit, onOpenRecord: (CheckinItem) -> Unit, onOpenPhotos: () -> Unit, onOpenPlaces: () -> Unit, onOpenTags: () -> Unit, onCreateInvite: () -> Unit, onCreateAlbum: (String) -> Unit, onCreateExport: () -> Unit, onDownloadExport: (ExportItem) -> Unit, message: String) {
     val places = records.map { it.placeName }.filter { it.isNotBlank() }.distinct().size
     val tags = records.flatMap { it.tags }.distinct().size
     if (user == null) {
+        val uriHandler = LocalUriHandler.current
         var registerMode by rememberSaveable { mutableStateOf(false) }
         var registerName by rememberSaveable { mutableStateOf("") }
         var displayName by rememberSaveable { mutableStateOf("") }
         var registerInvite by rememberSaveable { mutableStateOf("") }
         var registerPassword by rememberSaveable { mutableStateOf("") }
+        var acceptedPolicies by rememberSaveable { mutableStateOf(false) }
         Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center) {
-            Text(if (registerMode) "邀请注册" else "登录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(if (registerMode) "注册" else "登录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
             if (registerMode) {
-                OutlinedTextField(registerInvite, { registerInvite = it }, label = { Text("邀请码") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(registerInvite, { registerInvite = it }, label = { Text("邀请码（可选）") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(registerName, { registerName = it }, label = { Text("用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(displayName, { displayName = it }, label = { Text("显示名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = acceptedPolicies, onClick = { acceptedPolicies = !acceptedPolicies }, label = { Text(if (acceptedPolicies) "已同意" else "同意") })
+                    Spacer(Modifier.width(10.dp))
+                    Text("服务条款和隐私政策", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = { uriHandler.openUri(resolveAssetUrl(apiBase, publicConfig?.termsUrl ?: "/terms/")) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("阅读服务条款") }
+                    TextButton(
+                        onClick = { uriHandler.openUri(resolveAssetUrl(apiBase, publicConfig?.privacyUrl ?: "/privacy/")) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("阅读隐私政策") }
+                }
+                if (registerInvite.isBlank() && publicConfig?.publicRegistrationEnabled == false) Text("公开注册暂未开放，可填写邀请码注册", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
             } else {
                 OutlinedTextField(loginName, onLoginNameChange, label = { Text("邮箱或用户名") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             }
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(if (registerMode) registerPassword else password, if (registerMode) ({ registerPassword = it }) else onPasswordChange, label = { Text("密码") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = PasswordVisualTransformation())
             Spacer(Modifier.height(14.dp))
-            Button(onClick = { if (registerMode) onRegister(registerName, displayName, registerInvite, registerPassword) else onLogin() }, enabled = !busy && if (registerMode) registerName.isNotBlank() && registerInvite.isNotBlank() && registerPassword.length >= 8 else loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "创建账号" else "登录") }
-            TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "已有账号，返回登录" else "使用邀请码注册") }
+            Button(onClick = { if (registerMode) onRegister(registerName, displayName, registerInvite, registerPassword, acceptedPolicies) else onLogin() }, enabled = !busy && if (registerMode) registerName.isNotBlank() && registerPassword.length >= 8 && acceptedPolicies && (registerInvite.isNotBlank() || publicConfig?.publicRegistrationEnabled == true) else loginName.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "创建账号" else "登录") }
+            TextButton(onClick = { registerMode = !registerMode }, modifier = Modifier.fillMaxWidth()) { Text(if (registerMode) "已有账号，返回登录" else "创建账号") }
         }
         return
     }
@@ -2402,6 +2468,7 @@ private fun CheckinEditDialog(record: CheckinItem, availableTags: List<TagItem>,
     var note by rememberSaveable(record.id) { mutableStateOf(record.note) }
     var tagText by rememberSaveable(record.id) { mutableStateOf(record.tags.joinToString(",")) }
     var visibility by rememberSaveable(record.id) { mutableStateOf(record.visibility) }
+    var publicShowcase by rememberSaveable(record.id) { mutableStateOf(record.publicShowcase) }
     val selectedTags = parseDraftTags(tagText)
     val latitudeValue = latitude.toDoubleOrNull()
     val longitudeValue = longitude.toDoubleOrNull()
@@ -2444,11 +2511,17 @@ private fun CheckinEditDialog(record: CheckinItem, availableTags: List<TagItem>,
                             items(listOf("private", "followers", "public")) { value ->
                                 FilterChip(
                                     selected = visibility == value,
-                                    onClick = { visibility = value },
+                                    onClick = { visibility = value; if (value != "public") publicShowcase = false },
                                     label = { Text(visibilityLabel(value)) },
                                 )
                             }
                         }
+                        FilterChip(
+                            selected = publicShowcase,
+                            enabled = visibility == "public",
+                            onClick = { publicShowcase = !publicShowcase },
+                            label = { Text("互联网匿名展示") },
+                        )
                         Text("非本人查看时位置会降低精度", color = NunuloUi.Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -2466,6 +2539,7 @@ private fun CheckinEditDialog(record: CheckinItem, availableTags: List<TagItem>,
                             note = note,
                             tags = tagText,
                             visibility = visibility,
+                            publicShowcase = publicShowcase,
                         )
                     )
                 },
@@ -2717,6 +2791,7 @@ internal fun parseCheckin(json: JSONObject): CheckinItem {
         takenAt = json.nullableString("taken_at"),
         source = json.getString("source"),
         visibility = json.optString("visibility", "private"),
+        publicShowcase = json.optBoolean("public_showcase", false),
         canEdit = json.optBoolean("can_edit", true),
         liked = interaction?.optBoolean("liked") ?: false,
         likeCount = interaction?.optInt("like_count") ?: 0,
