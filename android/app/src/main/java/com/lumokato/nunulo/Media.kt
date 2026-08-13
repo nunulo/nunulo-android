@@ -14,6 +14,9 @@ import okio.BufferedSink
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
+import java.security.MessageDigest
+import java.util.UUID
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val MAX_UPLOAD_BYTES = 30L * 1024 * 1024
@@ -115,7 +118,7 @@ internal fun cacheSelectedMedia(context: Context, source: Uri): Uri {
         else -> "jpg"
     }
     val directory = File(context.filesDir, "pending-upload").apply { mkdirs() }
-    val target = File(directory, "selected-${System.currentTimeMillis()}.$extension")
+    val target = File(directory, "selected-${UUID.randomUUID()}.$extension")
     try {
         resolver.openInputStream(source)?.use { input ->
             target.outputStream().use { output ->
@@ -136,6 +139,29 @@ internal fun cacheSelectedMedia(context: Context, source: Uri): Uri {
         throw error
     }
     return Uri.fromFile(target)
+}
+
+internal fun sha256Hex(resolver: ContentResolver, uri: Uri): String = sha256Hex(
+    streamProvider = { openMediaStream(resolver, uri) },
+)
+
+internal fun sha256Hex(
+    streamProvider: () -> InputStream,
+    maxBytes: Long = MAX_UPLOAD_BYTES,
+): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    streamProvider().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > maxBytes) throw IllegalArgumentException("图片不能超过 30 MiB")
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
 }
 
 internal fun deleteCachedMedia(context: Context, uri: Uri?) {
@@ -190,13 +216,46 @@ private fun defaultFilename(mimeType: String): String = when (mimeType) {
 }
 
 internal fun savePendingUpload(prefs: SharedPreferences, pending: PendingUpload) {
-    val photoPath = pending.draft.photoUri?.let(::localFile)?.absolutePath ?: return
-    val draftFields = pendingUploadFields(pending.draft)
+    if (pending.draft.photos.isEmpty()) {
+        clearPendingUpload(prefs)
+        return
+    }
+    val draft = pending.draft
+    val photos = JSONArray()
+    draft.photos.forEach { item ->
+        photos.put(
+            JSONObject()
+                .put("key", item.key)
+                .put("local_path", item.localUri?.let(::localFile)?.absolutePath)
+                .put("photo", item.photo?.let(::photoToJson))
+                .put("status", item.status)
+                .put("checksum", item.checksum)
+                .put("progress", item.progress)
+                .put("error", item.error)
+                .put("capture_source", item.captureSource)
+        )
+    }
     val payload = JSONObject()
         .put("request_id", pending.requestId)
         .put("attempted", pending.attempted)
-        .put("photo_path", photoPath)
-    draftFields.forEach { (key, value) -> payload.put(key, value) }
+        .put("editing_id", draft.editingId)
+        .put("photos", photos)
+        .put("place_name", draft.placeName)
+        .put("latitude", draft.latitude)
+        .put("longitude", draft.longitude)
+        .put("location_source", draft.locationSource)
+        .put("location_privacy", draft.locationPrivacy)
+        .put("note", draft.note)
+        .put("taken_at", draft.takenAt)
+        .put("source", draft.source)
+        .put("visibility", draft.visibility)
+        .put("world_visible", draft.worldVisible)
+        .put("public_showcase", draft.publicShowcase)
+        .put("partner_ids", JSONArray(draft.partnerIds))
+        .put("item_type_ids", JSONArray(draft.itemTypeIds))
+        .put("work_ids", JSONArray(draft.workIds))
+        .put("character_ids", JSONArray(draft.characterIds))
+        .put("event_ids", JSONArray(draft.eventIds))
     if (!prefs.edit().putString("pendingUpload", payload.toString()).commit()) {
         throw IllegalStateException("无法保存上传草稿")
     }
@@ -207,9 +266,10 @@ internal fun pendingUploadFields(draft: UploadDraft): Map<String, String> = link
     "latitude" to draft.latitude,
     "longitude" to draft.longitude,
     "location_source" to draft.locationSource,
+    "location_privacy" to draft.locationPrivacy,
     "note" to draft.note,
-    "tags" to draft.tags,
     "visibility" to draft.visibility,
+    "world_visible" to draft.worldVisible.toString(),
     "public_showcase" to draft.publicShowcase.toString(),
 )
 
@@ -217,8 +277,22 @@ internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
     val raw = prefs.getString("pendingUpload", null) ?: return null
     return runCatching {
         val payload = JSONObject(raw)
-        val photo = File(payload.getString("photo_path"))
-        if (!photo.isFile) {
+        val photos = payload.optJSONArray("photos").objectItems { item ->
+            val localFile = item.optionalString("local_path")?.let(::File)
+            val photo = item.optJSONObject("photo")?.let(::parseStoredPhoto)
+            if (localFile != null && !localFile.isFile && photo == null) return@objectItems null
+            DraftPhotoItem(
+                key = item.optString("key", UUID.randomUUID().toString()),
+                localUri = localFile?.takeIf(File::isFile)?.let(Uri::fromFile),
+                photo = photo,
+                status = if (photo != null) "ready" else item.optString("status", "queued").let { status -> if (status == "uploading") "error" else status },
+                checksum = item.optionalString("checksum"),
+                progress = if (photo != null) 100 else 0,
+                error = if (item.optString("status") == "uploading") "上次上传被中断，请重试" else item.optionalString("error"),
+                captureSource = item.optString("capture_source", "gallery"),
+            )
+        }.filterNotNull()
+        if (photos.isEmpty()) {
             prefs.edit().remove("pendingUpload").apply()
             return null
         }
@@ -226,15 +300,24 @@ internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
             requestId = payload.getString("request_id"),
             attempted = payload.optBoolean("attempted", false),
             draft = UploadDraft(
-                photoUri = Uri.fromFile(photo),
+                editingId = payload.optionalString("editing_id"),
+                photos = photos,
                 placeName = payload.optString("place_name"),
                 latitude = payload.optString("latitude"),
                 longitude = payload.optString("longitude"),
-                locationSource = payload.optString("location_source", "manual"),
+                locationSource = payload.optString("location_source", "none"),
+                locationPrivacy = payload.optString("location_privacy", "exact"),
                 note = payload.optString("note"),
-                tags = payload.optString("tags", "娃娃"),
+                takenAt = payload.optString("taken_at"),
+                source = payload.optString("source", "android_capture"),
                 visibility = payload.optString("visibility", "private"),
+                worldVisible = payload.optBoolean("world_visible", false),
                 publicShowcase = payload.optBoolean("public_showcase", false),
+                partnerIds = payload.optJSONArray("partner_ids").stringItems(),
+                itemTypeIds = payload.optJSONArray("item_type_ids").stringItems(),
+                workIds = payload.optJSONArray("work_ids").stringItems(),
+                characterIds = payload.optJSONArray("character_ids").stringItems(),
+                eventIds = payload.optJSONArray("event_ids").stringItems(),
             ),
         )
     }.getOrElse {

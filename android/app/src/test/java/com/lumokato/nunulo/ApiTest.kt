@@ -37,45 +37,68 @@ class ApiTest {
     }
 
     @Test
-    fun feedScopesBuildExactMultiUserUrls() {
-        assertEquals("/api/checkins?scope=all&limit=120&offset=0", checkinFeedPath(FeedScope.All))
-        assertEquals("/api/checkins?scope=following&limit=120&offset=0", checkinFeedPath(FeedScope.Following))
-        assertEquals("/api/checkins?scope=public&limit=120&offset=0", checkinFeedPath(FeedScope.Public))
-        assertEquals("/api/checkins?scope=mine&limit=120&offset=0", checkinFeedPath(FeedScope.Mine))
+    fun feedScopesAndOrderBuildExactProductUrls() {
+        assertEquals("/api/checkins?scope=discover&order=popular&limit=120&offset=0", checkinFeedPath(FeedScope.Discover, FeedOrder.Popular))
+        assertEquals("/api/checkins?scope=following&order=latest&limit=120&offset=0", checkinFeedPath(FeedScope.Following, FeedOrder.Latest))
+        assertEquals("/api/checkins?scope=mine&order=latest&limit=120&offset=0&partner_id=partner-1", checkinFeedPath(FeedScope.Mine, FeedOrder.Latest, mapOf("partner_id" to "partner-1")))
     }
 
     @Test
-    fun mapUsesProductLabelsWithoutChangingFeedLabels() {
-        assertEquals("公开", FeedScope.Public.label)
-        assertEquals("发现", mapScopeLabel(FeedScope.Public))
-        assertEquals("关注", mapScopeLabel(FeedScope.Following))
-        assertEquals("我的", mapScopeLabel(FeedScope.Mine))
-    }
-
-    @Test
-    fun newUploadOnlyAppearsInCompatibleFeedScope() {
-        assertTrue(shouldShowOwnUpload(FeedScope.All, "private"))
-        assertTrue(shouldShowOwnUpload(FeedScope.Mine, "followers"))
-        assertTrue(shouldShowOwnUpload(FeedScope.Public, "public"))
-        assertFalse(shouldShowOwnUpload(FeedScope.Public, "private"))
-        assertFalse(shouldShowOwnUpload(FeedScope.Following, "public"))
-    }
-
-    @Test
-    fun parsesSharedCheckinPermissionsAndInteraction() {
+    fun parsesMultiPhotoRecordRelationsPermissionsAndInteraction() {
         val record = parseCheckin(
             JSONObject()
                 .put("id", "checkin-1")
                 .put("user_id", 42)
                 .put("author", JSONObject().put("display_name", "测试成员乙"))
+                .put("photo_ids", JSONArray().put("photo-1").put("photo-2"))
+                .put(
+                    "photos",
+                    JSONArray()
+                        .put(JSONObject().put("id", "photo-1").put("display_url", "/api/assets/display-1").put("thumb_url", "/api/assets/thumb-1"))
+                        .put(JSONObject().put("id", "photo-2").put("display_url", "/api/assets/display-2").put("thumb_url", "/api/assets/thumb-2")),
+                )
                 .put("place_name", "外滩")
                 .put("note", "多人测试")
                 .put("latitude", 39.901568)
                 .put("longitude", 116.422600)
-                .put("tags", JSONArray().put("娃娃").put("夜景"))
                 .put("source", "android_capture")
                 .put("visibility", "public")
+                .put("world_visible", true)
                 .put("public_showcase", true)
+                .put("location_source", "photo_exif")
+                .put("location_privacy", "regional")
+                .put(
+                    "catalog",
+                    JSONObject()
+                        .put("item_types", JSONArray().put(JSONObject().put("id", "type-1").put("canonical_name", "棉花娃娃")))
+                        .put("works", JSONArray().put(JSONObject().put("id", "work-1").put("canonical_name", "BanG Dream!")))
+                        .put("characters", JSONArray().put(JSONObject().put("id", "character-1").put("canonical_name", "户山香澄"))),
+                )
+                .put(
+                    "partners",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("id", "partner-1")
+                            .put("public_code", "N-ABC")
+                            .put("owner_user_id", 42)
+                            .put("name", "香澄")
+                            .put("visibility", "public")
+                            .put("moderation_status", "active")
+                            .put("record_count", 1)
+                            .put("can_edit", true),
+                    ),
+                )
+                .put(
+                    "events",
+                    JSONArray().put(
+                        JSONObject()
+                            .put("id", "event-1")
+                            .put("name", "Live")
+                            .put("event_type", "offline_live")
+                            .put("status", "active")
+                            .put("official", false),
+                    ),
+                )
                 .put("can_edit", false)
                 .put("interaction", JSONObject().put("liked", true).put("like_count", 3).put("comment_count", 2))
                 .put("thumb_url", "/api/media/thumb")
@@ -85,12 +108,62 @@ class ApiTest {
         assertEquals(42, record.userId)
         assertEquals("测试成员乙", record.authorName)
         assertEquals("public", record.visibility)
+        assertTrue(record.worldVisible)
         assertTrue(record.publicShowcase)
         assertFalse(record.canEdit)
         assertTrue(record.liked)
         assertEquals(3, record.likeCount)
         assertEquals(2, record.commentCount)
-        assertEquals(listOf("娃娃", "夜景"), record.tags)
+        assertEquals(listOf("photo-1", "photo-2"), record.photoIds)
+        assertEquals(listOf("棉花娃娃", "BanG Dream!", "户山香澄"), record.taxonomyNames)
+        assertEquals("N-ABC", record.partners.single().publicCode)
+        assertEquals("offline_live", record.events.single().eventType)
+    }
+
+    @Test
+    fun checkinPayloadUsesPhotoIdsRelationsAndIndependentVisibility() {
+        val payload = checkinPayload(
+            UploadDraft(
+                photos = listOf(
+                    DraftPhotoItem(photo = PhotoItem("photo-2"), status = "ready"),
+                    DraftPhotoItem(photo = PhotoItem("photo-1"), status = "ready"),
+                ),
+                placeName = "东京巨蛋",
+                latitude = "35.7056",
+                longitude = "139.7519",
+                locationSource = "photo_exif",
+                locationPrivacy = "regional",
+                visibility = "public",
+                worldVisible = true,
+                publicShowcase = true,
+                partnerIds = listOf("partner-1", "partner-2"),
+                itemTypeIds = listOf("type-1"),
+                workIds = listOf("work-1"),
+                characterIds = listOf("character-1"),
+                eventIds = listOf("event-1"),
+            ),
+            "request-1",
+        )
+
+        assertEquals(listOf("photo-2", "photo-1"), payload.getJSONArray("photo_ids").let { array -> List(array.length()) { array.getString(it) } })
+        assertEquals("request-1", payload.getString("client_request_id"))
+        assertEquals("photo_exif", payload.getString("location_source"))
+        assertEquals("regional", payload.getString("location_privacy"))
+        assertTrue(payload.getBoolean("world_visible"))
+        assertTrue(payload.getBoolean("public_showcase"))
+        assertEquals(2, payload.getJSONArray("partner_ids").length())
+        assertFalse(payload.has("tags"))
+    }
+
+    @Test
+    fun draftValidationAllowsNoLocationButRequiresOneToNineReadyPhotos() {
+        val valid = validateDraft(UploadDraft(photos = listOf(DraftPhotoItem(photo = PhotoItem("photo-1"), status = "ready"))))
+        val partialCoordinates = validateDraft(UploadDraft(photos = listOf(DraftPhotoItem(photo = PhotoItem("photo-1"), status = "ready")), latitude = "39"))
+        val failedPhoto = validateDraft(UploadDraft(photos = listOf(DraftPhotoItem(status = "error"))))
+
+        assertTrue(valid.ready)
+        assertFalse(partialCoordinates.ready)
+        assertFalse(failedPhoto.ready)
     }
 
     @Test

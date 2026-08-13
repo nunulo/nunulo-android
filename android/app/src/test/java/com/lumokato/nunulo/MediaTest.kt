@@ -6,6 +6,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.charset.StandardCharsets
 
 class MediaTest {
     @Test
@@ -69,15 +70,27 @@ class MediaTest {
                 placeName = "人民广场",
                 latitude = "39.901568",
                 longitude = "116.422600",
-                tags = "娃娃,测试",
+                locationPrivacy = "regional",
                 visibility = "public",
+                worldVisible = true,
                 publicShowcase = true,
             )
         )
 
         assertEquals("public", fields["visibility"])
+        assertEquals("true", fields["world_visible"])
         assertEquals("true", fields["public_showcase"])
         assertEquals("人民广场", fields["place_name"])
-        assertEquals("娃娃,测试", fields["tags"])
+        assertEquals("regional", fields["location_privacy"])
+        assertTrue("tags" !in fields)
+    }
+
+    @Test
+    fun sha256IsComputedIncrementallyFromStream() {
+        val content = "Nunulo multi-photo".toByteArray(StandardCharsets.UTF_8)
+
+        val checksum = sha256Hex(streamProvider = { content.inputStream() })
+
+        assertEquals("118ebe07d2a64417d16816f47fb683a0625e045c7c7362ff7a92e85e7ad9ec75", checksum)
     }
 }
