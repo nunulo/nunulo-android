@@ -56,7 +56,7 @@ import com.amap.api.maps.model.MarkerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private enum class CaptureStep(val title: String, val hint: String) {
+internal enum class CaptureStep(val title: String, val hint: String) {
     Photos("照片", "先选好这次记录的 1–9 张照片"),
     Relations("关系与地点", "关联伙伴、作品、角色和真实地点"),
     Details("补充信息", "写下时间、说明和参与活动"),
@@ -68,7 +68,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
     val draft = controller.draft
     val validation = validateDraft(draft)
     var mapOpen by rememberSaveable { mutableStateOf(false) }
-    var candidateOpen by rememberSaveable { mutableStateOf(false) }
+    var candidateRequest by remember { mutableStateOf<CatalogCandidateRequest?>(null) }
     var groupId by rememberSaveable { mutableStateOf("") }
     var stepName by rememberSaveable { mutableStateOf(CaptureStep.Photos.name) }
     val step = CaptureStep.valueOf(stepName)
@@ -77,15 +77,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(step.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                 Text(step.hint, color = NunuloColors.Muted)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    CaptureStep.entries.forEachIndexed { index, value ->
-                        Surface(
-                            color = if (value == step) NunuloColors.Coral else NunuloColors.Hairline,
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.weight(1f).height(4.dp),
-                        ) {}
-                    }
-                }
+                CaptureStepIndicator(step)
             }
         }
         if (step == CaptureStep.Photos) item {
@@ -97,12 +89,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                     Text("${draft.photos.size}/9", color = NunuloColors.Muted)
                 }
                 if (draft.photos.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().height(220.dp).background(NunuloColors.Placeholder, RoundedCornerShape(10.dp)).clickable(onClick = onCamera), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("拍下第一张照片", fontWeight = FontWeight.Bold)
-                            Text("也可以从系统相册批量选择", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
+                    CapturePhotoEmptyState(onCamera = onCamera)
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(draft.photos, key = { it.key }) { item ->
@@ -177,12 +164,11 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
         }
         if (step == CaptureStep.Relations) item {
             SectionCard("类别", "没有伙伴时请选择允许的物件类型、作品或角色；不使用自由 tag。") {
-                CatalogSelection("物件类型", controller.discovery.catalog["item_type"].orEmpty(), draft.itemTypeIds) { id -> controller.updateDraft(draft.copy(itemTypeIds = toggleId(draft.itemTypeIds, id))) }
-                CatalogSelection("作品 / IP", controller.discovery.catalog["work"].orEmpty(), draft.workIds) { id -> controller.updateDraft(draft.copy(workIds = toggleId(draft.workIds, id))) }
+                CatalogSelection("物件类型", controller.discovery.catalog["item_type"].orEmpty(), draft.itemTypeIds, onToggle = { id -> controller.updateDraft(draft.copy(itemTypeIds = toggleId(draft.itemTypeIds, id))) }, onNoResult = { query -> candidateRequest = CatalogCandidateRequest("item_type", query) })
+                CatalogSelection("作品 / IP", controller.discovery.catalog["work"].orEmpty(), draft.workIds, onToggle = { id -> controller.updateDraft(draft.copy(workIds = toggleId(draft.workIds, id))) }, onNoResult = { query -> candidateRequest = CatalogCandidateRequest("work", query) })
                 val groups = controller.discovery.catalog["group"].orEmpty().filter { it.work == null || it.work.id in draft.workIds || draft.workIds.isEmpty() }
-                CatalogSelection("乐队 / 组合", groups, listOfNotNull(groupId.takeIf(String::isNotBlank))) { id -> groupId = if (groupId == id) "" else id }
-                CatalogSelection("角色", controller.discovery.catalog["character"].orEmpty().filter { (it.work == null || it.work.id in draft.workIds || draft.workIds.isEmpty()) && (groupId.isBlank() || it.group?.id == groupId) }, draft.characterIds) { id -> controller.updateDraft(draft.copy(characterIds = toggleId(draft.characterIds, id))) }
-                TextButton(onClick = { candidateOpen = true }) { Text("没有合适项？提交候选") }
+                CatalogSelection("乐队 / 组合", groups, listOfNotNull(groupId.takeIf(String::isNotBlank)), onToggle = { id -> groupId = if (groupId == id) "" else id }, onNoResult = { query -> candidateRequest = CatalogCandidateRequest("group", query, draft.workIds.singleOrNull()) }, candidateEnabled = draft.workIds.size == 1, candidateDisabledHint = "先只选择一个所属作品，再提交组合候选")
+                CatalogSelection("角色", controller.discovery.catalog["character"].orEmpty().filter { (it.work == null || it.work.id in draft.workIds || draft.workIds.isEmpty()) && (groupId.isBlank() || it.group?.id == groupId) }, draft.characterIds, onToggle = { id -> controller.updateDraft(draft.copy(characterIds = toggleId(draft.characterIds, id))) }, onNoResult = { query -> candidateRequest = CatalogCandidateRequest("character", query, draft.workIds.singleOrNull()) }, candidateEnabled = draft.workIds.size == 1, candidateDisabledHint = "先只选择一个所属作品，再提交角色候选")
             }
         }
         if (step == CaptureStep.Details) item {
@@ -264,7 +250,32 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
             }
         }
     }
-    if (candidateOpen) CandidateDialog(controller, onDismiss = { candidateOpen = false })
+    candidateRequest?.let { request -> CandidateDialog(controller, request, onDismiss = { candidateRequest = null }) }
+}
+
+internal data class CatalogCandidateRequest(val type: String, val name: String, val workId: String? = null)
+
+@Composable
+internal fun CaptureStepIndicator(step: CaptureStep) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        CaptureStep.entries.forEach { value ->
+            Surface(
+                color = if (value == step) NunuloColors.Coral else NunuloColors.Hairline,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.weight(1f).height(4.dp),
+            ) {}
+        }
+    }
+}
+
+@Composable
+internal fun CapturePhotoEmptyState(onCamera: () -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(220.dp).background(NunuloColors.Placeholder, RoundedCornerShape(10.dp)).clickable(onClick = onCamera), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("拍下第一张照片", fontWeight = FontWeight.Bold)
+            Text("也可以从系统相册批量选择", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 @Composable
@@ -305,8 +316,17 @@ private fun DraftPhotoPreview(item: DraftPhotoItem, controller: NunuloController
 }
 
 @Composable
-private fun CatalogSelection(title: String, items: List<CatalogEntityItem>, selected: List<String>, onToggle: (String) -> Unit) {
-    var query by rememberSaveable(title) { mutableStateOf("") }
+internal fun CatalogSelection(
+    title: String,
+    items: List<CatalogEntityItem>,
+    selected: List<String>,
+    onToggle: (String) -> Unit,
+    onNoResult: ((String) -> Unit)? = null,
+    candidateEnabled: Boolean = true,
+    candidateDisabledHint: String = "",
+    initialQuery: String = "",
+) {
+    var query by rememberSaveable(title) { mutableStateOf(initialQuery) }
     val matches = remember(items, query) { items.filter { it.matchesCatalogQuery(query) } }
     Text(title, fontWeight = FontWeight.Bold)
     OutlinedTextField(
@@ -317,17 +337,23 @@ private fun CatalogSelection(title: String, items: List<CatalogEntityItem>, sele
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    if (matches.isEmpty()) Text(if (query.isBlank()) "暂无候选" else "没有找到“${query.trim()}”", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    if (matches.isEmpty()) {
+        Text(if (query.isBlank()) "暂无候选" else "没有找到“${query.trim()}”", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        if (query.isNotBlank() && onNoResult != null) {
+            TextButton(enabled = candidateEnabled, onClick = { onNoResult(query.trim()) }) { Text("提交“${query.trim()}”候选") }
+            if (!candidateEnabled && candidateDisabledHint.isNotBlank()) Text(candidateDisabledHint, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+    }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(matches, key = { it.id }) { item -> FilterChip(selected = item.id in selected, onClick = { onToggle(item.id) }, label = { Text(item.canonicalName) }) }
     }
 }
 
 @Composable
-private fun CandidateDialog(controller: NunuloController, onDismiss: () -> Unit) {
-    var type by rememberSaveable { mutableStateOf("item_type") }
-    var name by rememberSaveable { mutableStateOf("") }
-    var workId by rememberSaveable { mutableStateOf("") }
+private fun CandidateDialog(controller: NunuloController, request: CatalogCandidateRequest, onDismiss: () -> Unit) {
+    var type by rememberSaveable(request.type) { mutableStateOf(request.type) }
+    var name by rememberSaveable(request.name) { mutableStateOf(request.name) }
+    var workId by rememberSaveable(request.workId) { mutableStateOf(request.workId.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("提交类别候选") },
@@ -336,7 +362,7 @@ private fun CandidateDialog(controller: NunuloController, onDismiss: () -> Unit)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(listOf("item_type" to "物件类型", "work" to "作品", "group" to "乐队 / 组合", "character" to "角色")) { option -> FilterChip(selected = type == option.first, onClick = { type = option.first }, label = { Text(option.second) }) }
                 }
-                OutlinedTextField(name, { name = it }, label = { Text("中文候选名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text("候选名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (type == "group" || type == "character") {
                     Text(if (type == "group") "组合必须选择所属作品" else "角色必须选择所属作品", color = NunuloColors.Muted)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

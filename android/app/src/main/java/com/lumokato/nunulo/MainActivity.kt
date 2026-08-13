@@ -168,7 +168,7 @@ private fun NunuloApp() {
 }
 
 @Composable
-private fun NunuloTopBar(tab: AppTab, message: String, busy: Boolean, unreadCount: Int, onRefresh: () -> Unit, onNotifications: () -> Unit) {
+internal fun NunuloTopBar(tab: AppTab, message: String, busy: Boolean, unreadCount: Int, onRefresh: () -> Unit, onNotifications: () -> Unit) {
     Surface(color = Color.White) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {

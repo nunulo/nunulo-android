@@ -70,11 +70,41 @@ internal fun FeedScreen(controller: NunuloController) {
                 }
             }
         }
+        controller.syncError?.let { error ->
+            item {
+                FeedSyncFailure(
+                    detail = error,
+                    hasCachedContent = controller.feedItems.isNotEmpty(),
+                    onRetry = controller::refreshAll,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
         if (controller.feedItems.isEmpty()) {
-            item { Box(Modifier.padding(horizontal = 12.dp)) { EmptyState("这里还没有内容", "先发布第一条照片记录，或关注作品、角色和伙伴。") } }
+            if (controller.syncError == null) {
+                item { Box(Modifier.padding(horizontal = 12.dp)) { EmptyState("这里还没有内容", "先发布第一条照片记录，或关注作品、角色和伙伴。") } }
+            }
         }
         items(controller.feedItems, key = CheckinItem::id) { record ->
             FeedCard(record, controller, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+        }
+    }
+}
+
+@Composable
+internal fun FeedSyncFailure(detail: String, hasCachedContent: Boolean, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(color = NunuloColors.Soft, modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("暂时无法同步", fontWeight = FontWeight.Bold)
+            Text(
+                if (hasCachedContent) "当前显示上次同步的内容；本地草稿不会丢失。" else "当前网络不可用，本地草稿不会丢失。",
+                color = NunuloColors.Muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (detail.isNotBlank() && detail !in setOf("同步失败", "动态加载失败")) {
+                Text(detail, color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall, maxLines = 2)
+            }
+            TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) { Text("重新同步") }
         }
     }
 }

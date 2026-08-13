@@ -4,6 +4,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.android.compose.screenshot")
 }
 
 fun cleanLocalConfigValue(value: String?): String {
@@ -44,6 +45,7 @@ val releaseSigningConfigured = listOf(
 ).all(String::isNotBlank)
 
 android {
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
     namespace = "com.lumokato.nunulo"
     compileSdk = 36
 
@@ -122,6 +124,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
     debugImplementation("androidx.compose.ui:ui-tooling:1.11.2")
+    screenshotTestImplementation("com.android.tools.screenshot:screenshot-validation-api:0.0.1-alpha15")
+    screenshotTestImplementation("androidx.compose.ui:ui-tooling:1.11.2")
 }
 
 tasks.register("verifyReleaseConfiguration") {

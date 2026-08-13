@@ -38,33 +38,26 @@ import androidx.compose.ui.unit.dp
 internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Unit) {
     val user = controller.currentUser
     val uriHandler = LocalUriHandler.current
-    val adminRole = user?.roles.orEmpty().firstOrNull { it == "owner" || it == "admin" }
     var homeName by rememberSaveable { mutableStateOf(controller.footprint.home?.name ?: "家") }
     var albumTitle by rememberSaveable { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
               Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Surface(shape = CircleShape, color = NunuloColors.Soft, modifier = Modifier.size(72.dp).clickable(onClick = onPickAvatar)) {
+                ProfileIdentity(
+                    user = user,
+                    onPickAvatar = onPickAvatar,
+                    onLogout = controller::logout,
+                    onOpenAdmin = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, "/admin/")) },
+                    avatar = {
                         if (user?.avatarUrl != null) RemoteImage(user.avatarUrl, controller.baseUrl, controller.mediaApi, aspect = 1f)
                         else Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { Text(user?.displayName?.take(1) ?: "N", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black) }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(user?.displayName ?: "Nunulo 成员", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                        Text(user?.username?.let { "@$it" } ?: user?.email.orEmpty(), color = NunuloColors.Muted)
-                        if (adminRole != null) Text(if (adminRole == "owner") "站点所有者" else "管理员", color = NunuloColors.Coral, fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = controller::logout) { Text("退出") }
-                }
+                    },
+                )
                 val used = user?.storageUsageBytes ?: 0
                 val quota = user?.storageQuotaBytes ?: 0
                 androidx.compose.material3.LinearProgressIndicator(progress = { if (quota > 0) (used.toFloat() / quota).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = NunuloColors.Coral, trackColor = NunuloColors.Hairline)
                 Text("照片存储 ${formatBytes(used)} / ${formatBytes(quota)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                if (adminRole != null) {
-                    TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, "/admin/")) }) { Text("打开 Web 管理台") }
-                    Text("Android 只显示身份和入口；目录、举报、活动与存储治理仍在独立 Web Admin。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                }
               }
             }
         }
@@ -155,6 +148,34 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun ProfileIdentity(
+    user: AuthUser?,
+    onPickAvatar: () -> Unit,
+    onLogout: () -> Unit,
+    onOpenAdmin: () -> Unit,
+    avatar: @Composable () -> Unit,
+) {
+    val adminRole = user?.roles.orEmpty().firstOrNull { it == "owner" || it == "admin" }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Surface(shape = CircleShape, color = NunuloColors.Soft, modifier = Modifier.size(72.dp).clickable(onClick = onPickAvatar)) {
+                avatar()
+            }
+            Column(Modifier.weight(1f)) {
+                Text(user?.displayName ?: "Nunulo 成员", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text(user?.username?.let { "@$it" } ?: user?.email.orEmpty(), color = NunuloColors.Muted)
+                if (adminRole != null) Text(if (adminRole == "owner") "站点所有者" else "管理员", color = NunuloColors.Coral, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = onLogout) { Text("退出") }
+        }
+        if (adminRole != null) {
+            TextButton(onClick = onOpenAdmin) { Text("打开 Web 管理台") }
+            Text("Android 只显示身份和入口；目录、举报、活动与存储治理仍在独立 Web Admin。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

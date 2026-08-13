@@ -109,6 +109,8 @@ internal class NunuloController(
         private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
+    var syncError by mutableStateOf<String?>(null)
+        private set
     var busy by mutableStateOf(false)
         private set
     private var draftRequestId by mutableStateOf(UUID.randomUUID().toString())
@@ -191,9 +193,15 @@ internal class NunuloController(
         coroutineScope.launch {
             try {
                 applyState(loadState())
+                syncError = null
                 message = nextMessage
             } catch (error: Exception) {
-                if (looksLikeExpiredToken(error)) logout("登录已过期，请重新登录") else message = error.message ?: "同步失败"
+                if (looksLikeExpiredToken(error)) {
+                    logout("登录已过期，请重新登录")
+                } else {
+                    syncError = error.message ?: "同步失败"
+                    message = syncError.orEmpty()
+                }
             } finally {
                 busy = false
             }
@@ -416,6 +424,7 @@ internal class NunuloController(
         selectedRecord = null
         selectedPartner = null
         collection = null
+        syncError = null
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
     }
@@ -430,9 +439,11 @@ internal class NunuloController(
             try {
                 feedItems = authed { token -> api.listCheckins(apiBase, token, nextScope, nextOrder) }
                 if (nextScope == FeedScope.Mine) mineItems = feedItems
+                syncError = null
                 message = "已切换到${nextScope.label} · ${nextOrder.label}"
             } catch (error: Exception) {
-                message = error.message ?: "动态加载失败"
+                syncError = error.message ?: "动态加载失败"
+                message = syncError.orEmpty()
             } finally {
                 busy = false
             }
