@@ -88,6 +88,12 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                     Spacer(Modifier.weight(1f))
                     Text("${draft.photos.size}/9", color = NunuloColors.Muted)
                 }
+                if (draft.photos.any { it.status == "error" || it.status == "uploading" || it.status == "validating" }) {
+                    DraftRecoverySummary(
+                        photos = draft.photos,
+                        onRetryFailed = { draft.photos.filter { it.status == "error" }.forEach { controller.retryPhoto(it.key) } },
+                    )
+                }
                 if (draft.photos.isEmpty()) {
                     CapturePhotoEmptyState(onCamera = onCamera)
                 } else {
@@ -118,11 +124,13 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                     OutlinedTextField(draft.longitude, { controller.updateDraft(draft.copy(longitude = it, locationSource = "manual")) }, label = { Text("经度") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 Text("来源：${locationSourceLabel(draft.locationSource)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { controller.requestLocation(LocationPurpose.Draft) }) { Text("使用手机定位") }
-                    TextButton(onClick = { mapOpen = !mapOpen }) { Text(if (mapOpen) "收起地图" else "地图补点") }
-                    TextButton(onClick = { controller.updateDraft(draft.copy(latitude = "", longitude = "", locationSource = "none", placeName = "")) }) { Text("无地点发布") }
-                }
+                LocationChoiceState(
+                    hasCoordinates = draft.latitude.isNotBlank() && draft.longitude.isNotBlank(),
+                    mapOpen = mapOpen,
+                    onDeviceLocation = { controller.requestLocation(LocationPurpose.Draft) },
+                    onToggleMap = { mapOpen = !mapOpen },
+                    onClear = { controller.updateDraft(draft.copy(latitude = "", longitude = "", locationSource = "none", placeName = "")) },
+                )
                 if (mapOpen) {
                     DraftLocationMap(
                         latitude = draft.latitude.toDoubleOrNull(),
@@ -274,6 +282,56 @@ internal fun CapturePhotoEmptyState(onCamera: () -> Unit, modifier: Modifier = M
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("拍下第一张照片", fontWeight = FontWeight.Bold)
             Text("也可以从系统相册批量选择", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+internal fun DraftRecoverySummary(photos: List<DraftPhotoItem>, onRetryFailed: () -> Unit, modifier: Modifier = Modifier) {
+    val ready = photos.count { it.status == "ready" }
+    val failed = photos.count { it.status == "error" }
+    val pending = photos.size - ready - failed
+    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(14.dp), modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (failed > 0) "有照片需要重试" else "正在处理照片", fontWeight = FontWeight.Bold)
+            Text(
+                buildList {
+                    if (ready > 0) add("$ready 张已安全上传")
+                    if (pending > 0) add("$pending 张处理中")
+                    if (failed > 0) add("$failed 张失败")
+                }.joinToString(" · "),
+                color = NunuloColors.Muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text("已成功的照片不会重传；草稿、顺序和请求号会保留。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            if (failed > 0) TextButton(onClick = onRetryFailed, contentPadding = PaddingValues(0.dp)) { Text("重试失败照片") }
+        }
+    }
+}
+
+@Composable
+internal fun LocationChoiceState(
+    hasCoordinates: Boolean,
+    mapOpen: Boolean,
+    onDeviceLocation: () -> Unit,
+    onToggleMap: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        if (!hasCoordinates) {
+            Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("还没有地点", fontWeight = FontWeight.Bold)
+                    Text("定位权限被拒绝或暂时无定位时，仍可读取照片 GNSS、地图补点或直接无地点发布。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onDeviceLocation) { Text(if (hasCoordinates) "重新定位" else "使用手机定位") }
+            TextButton(onClick = onToggleMap) { Text(if (mapOpen) "收起地图" else "地图补点") }
+            if (hasCoordinates) TextButton(onClick = onClear) { Text("清除地点") }
+            else TextButton(onClick = onClear) { Text("无地点发布") }
         }
     }
 }

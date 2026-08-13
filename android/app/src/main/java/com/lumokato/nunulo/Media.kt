@@ -220,13 +220,23 @@ internal fun savePendingUpload(prefs: SharedPreferences, pending: PendingUpload)
         clearPendingUpload(prefs)
         return
     }
+    val raw = encodePendingUpload(pending)
+    if (!prefs.edit().putString("pendingUpload", raw).commit()) {
+        throw IllegalStateException("无法保存上传草稿")
+    }
+}
+
+internal fun encodePendingUpload(
+    pending: PendingUpload,
+    localPathFor: (DraftPhotoItem) -> String? = { item -> item.localUri?.let(::localFile)?.absolutePath },
+): String {
     val draft = pending.draft
     val photos = JSONArray()
     draft.photos.forEach { item ->
         photos.put(
             JSONObject()
                 .put("key", item.key)
-                .put("local_path", item.localUri?.let(::localFile)?.absolutePath)
+                .put("local_path", localPathFor(item))
                 .put("photo", item.photo?.let(::photoToJson))
                 .put("status", item.status)
                 .put("checksum", item.checksum)
@@ -259,9 +269,7 @@ internal fun savePendingUpload(prefs: SharedPreferences, pending: PendingUpload)
         .put("work_ids", JSONArray(draft.workIds))
         .put("character_ids", JSONArray(draft.characterIds))
         .put("event_ids", JSONArray(draft.eventIds))
-    if (!prefs.edit().putString("pendingUpload", payload.toString()).commit()) {
-        throw IllegalStateException("无法保存上传草稿")
-    }
+    return payload.toString()
 }
 
 internal fun pendingUploadFields(draft: UploadDraft): Map<String, String> = linkedMapOf(
@@ -278,15 +286,25 @@ internal fun pendingUploadFields(draft: UploadDraft): Map<String, String> = link
 
 internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
     val raw = prefs.getString("pendingUpload", null) ?: return null
-    return runCatching {
+    val restored = decodePendingUpload(raw)
+    if (restored == null) prefs.edit().remove("pendingUpload").apply()
+    return restored
+}
+
+internal fun decodePendingUpload(
+    raw: String,
+    localPathExists: (String) -> Boolean = { path -> File(path).isFile },
+    localUriFromPath: (String) -> Uri? = { path -> Uri.fromFile(File(path)) },
+): PendingUpload? = runCatching {
         val payload = JSONObject(raw)
         val photos = payload.optJSONArray("photos").objectItems { item ->
-            val localFile = item.optionalString("local_path")?.let(::File)
+            val localPath = item.optionalString("local_path")
             val photo = item.optJSONObject("photo")?.let(::parseStoredPhoto)
-            if (localFile != null && !localFile.isFile && photo == null) return@objectItems null
+            val hasLocalMedia = localPath?.let(localPathExists) == true
+            if (photo == null && !hasLocalMedia) return@objectItems null
             DraftPhotoItem(
                 key = item.optString("key", UUID.randomUUID().toString()),
-                localUri = localFile?.takeIf(File::isFile)?.let(Uri::fromFile),
+                localUri = localPath?.takeIf { hasLocalMedia }?.let(localUriFromPath),
                 photo = photo,
                 status = if (photo != null) "ready" else item.optString("status", "queued").let { status -> if (status == "uploading") "error" else status },
                 checksum = item.optionalString("checksum"),
@@ -295,10 +313,7 @@ internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
                 captureSource = item.optString("capture_source", "gallery"),
             )
         }.filterNotNull()
-        if (photos.isEmpty()) {
-            prefs.edit().remove("pendingUpload").apply()
-            return null
-        }
+        if (photos.isEmpty()) return null
         PendingUpload(
             requestId = payload.getString("request_id"),
             attempted = payload.optBoolean("attempted", false),
@@ -326,11 +341,7 @@ internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
                 eventIds = payload.optJSONArray("event_ids").stringItems(),
             ),
         )
-    }.getOrElse {
-        prefs.edit().remove("pendingUpload").apply()
-        null
-    }
-}
+    }.getOrNull()
 
 internal fun clearPendingUpload(prefs: SharedPreferences) {
     prefs.edit().remove("pendingUpload").apply()

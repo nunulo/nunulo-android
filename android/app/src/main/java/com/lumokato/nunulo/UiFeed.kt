@@ -111,10 +111,29 @@ internal fun FeedSyncFailure(detail: String, hasCachedContent: Boolean, onRetry:
 
 @Composable
 private fun FeedCard(record: CheckinItem, controller: NunuloController, modifier: Modifier) {
+    FeedRecordCard(
+        record = record,
+        modifier = modifier,
+        onOpen = { controller.openRecord(record) },
+        onLike = { controller.toggleLike(record) },
+        image = {
+            RemoteImage(record.displayUrl ?: record.thumbUrl, controller.baseUrl, controller.mediaApi, aspect = 1.04f)
+        },
+    )
+}
+
+@Composable
+internal fun FeedRecordCard(
+    record: CheckinItem,
+    onOpen: () -> Unit,
+    onLike: () -> Unit,
+    modifier: Modifier = Modifier,
+    image: @Composable () -> Unit,
+) {
     Surface(modifier, color = Color.White, shape = RoundedCornerShape(20.dp)) {
         Column {
-            Box(Modifier.fillMaxWidth().clickable { controller.openRecord(record) }) {
-                RemoteImage(record.displayUrl ?: record.thumbUrl, controller.baseUrl, controller.mediaApi, aspect = 1.04f)
+            Box(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+                image()
                 if (record.photos.size > 1) {
                     Surface(color = Color.Black.copy(alpha = 0.62f), shape = RoundedCornerShape(12.dp), modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)) {
                         Text("${record.photos.size} 图", color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
@@ -126,8 +145,10 @@ private fun FeedCard(record: CheckinItem, controller: NunuloController, modifier
                     Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(50)) {
                         Text(record.authorName.take(1), color = NunuloColors.Coral, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
                     }
-                    Text(record.authorName, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
-                    Text(shortDate(record.takenAt ?: record.createdAt), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    Column(Modifier.padding(start = 8.dp).weight(1f)) {
+                        Text(record.authorName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(shortDate(record.takenAt ?: record.createdAt), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
                 Text(record.note.ifBlank { record.placeName.ifBlank { "照片记录" } }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 val summary = buildList {
@@ -139,7 +160,7 @@ private fun FeedCard(record: CheckinItem, controller: NunuloController, modifier
                 if (summary.isNotEmpty()) Text(summary.joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(record.placeName, color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { controller.toggleLike(record) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    TextButton(onClick = onLike, contentPadding = PaddingValues(horizontal = 4.dp)) {
                         Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}")
                     }
                     Text("评 ${record.commentCount}", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)

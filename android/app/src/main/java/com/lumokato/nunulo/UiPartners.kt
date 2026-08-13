@@ -49,19 +49,11 @@ internal fun PartnersScreen(controller: NunuloController) {
                 if (controller.partners.isEmpty()) Text("先登记常拍的娃娃，之后记录时无需重复选择类别。", color = NunuloColors.Muted)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(controller.partners, key = { it.id }) { partner ->
-                        Surface(color = NunuloColors.Background, shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), modifier = Modifier.width(220.dp).clickable { controller.selectPartner(partner) }) {
-                            Column {
-                                RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.2f)
-                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    Text(partner.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)) {
-                                        Text(partner.publicCode, color = NunuloColors.Coral, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
-                                    }
-                                    Text(listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                                    Text("${partner.recordCount} 条记录 · ${visibilityLabel(partner.visibility)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
+                        PartnerSummaryCard(
+                            partner = partner,
+                            onOpen = { controller.selectPartner(partner) },
+                            image = { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.2f) },
+                        )
                     }
                 }
             }
@@ -130,6 +122,32 @@ internal fun PartnersScreen(controller: NunuloController) {
             initial = editingId?.let { id -> controller.partners.firstOrNull { it.id == id } },
             onDismiss = { editorOpen = false },
         )
+    }
+}
+
+@Composable
+internal fun PartnerSummaryCard(
+    partner: PartnerItem,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+    image: @Composable () -> Unit,
+) {
+    Surface(
+        color = NunuloColors.Background,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        modifier = modifier.width(220.dp).clickable(onClick = onOpen),
+    ) {
+        Column {
+            image()
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(partner.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)) {
+                    Text(partner.publicCode, color = NunuloColors.Coral, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+                }
+                Text(listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Text("${partner.recordCount} 条记录 · ${visibilityLabel(partner.visibility)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
 

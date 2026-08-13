@@ -51,6 +51,12 @@ NUNULO_RELEASE_KEY_PASSWORD=<key password>
 
 推送与应用版本一致的 `v*` tag 时，GitHub Actions 在测试、签名、包名、版本号和地图 Key 校验通过后创建正式 Release，并上传固定名称 `nunulo-android.apk` 与 `nunulo-android.sha256`。普通分支推送只保留 CI artifact，不会自动创建公开下载。
 
-选择或拍摄的照片会复制到应用私有目录并立即保存草稿。应用被强停或上传中断后会恢复照片、地点、坐标、类别、伙伴、活动、备注和请求号；重复登记由 API 幂等与照片 checksum 复用共同保护。用户可在登记页手工修改经纬度或主动清除草稿。
+选择或拍摄的照片会复制到应用私有目录并立即保存草稿。应用被强停或上传中断后会恢复照片顺序、成功/失败状态、地点、坐标、类别、伙伴、活动、备注和请求号；已成功照片不会重传，中断中的照片会变为可重试状态，不可恢复的本地空照片不会残留。重复登记由 API 幂等与照片 checksum 复用共同保护。用户可在登记页手工修改经纬度或主动清除草稿。
+
+Linux 界面回归直接渲染生产 Compose 组件，覆盖记录空态、部分上传失败、无定位、目录无结果、动态离线、真实长内容动态、长伙伴资料，以及普通成员和 Owner 角色边界：
+
+```powershell
+.\gradlew.bat :app:validateDebugScreenshotTest
+```
 
 产品与验收状态以 `C:/Dev/Nunulo/nunulo-docs/docs/主线/当前真实状态.md` 为准。
