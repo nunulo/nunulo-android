@@ -40,20 +40,18 @@ internal fun PartnersScreen(controller: NunuloController) {
     var searchCode by rememberSaveable { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            SectionCard("我的伙伴", "伙伴是你拥有、会重复出镜的具体物件；稳定编号用于站内识别，不是 NFT 或物权证明。") {
-                Row {
-                    Button(onClick = { editingId = null; editorOpen = true }) { Text("登记伙伴") }
-                    Spacer(Modifier.weight(1f))
-                    Text("${controller.partners.size} 个", color = NunuloColors.Muted)
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("常伴出镜的伙伴", style = MaterialTheme.typography.titleLarge)
+                        Text("${controller.partners.size} 位伙伴 · 记录会自动带上它的作品与角色", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Button(onClick = { editingId = null; editorOpen = true }) { Text("登记") }
                 }
-                if (controller.partners.isEmpty()) Text("先登记常拍的娃娃，之后记录时无需重复选择类别。", color = NunuloColors.Muted)
+                if (controller.partners.isEmpty()) EmptyState("从第一位伙伴开始", "登记后，每次记录都能直接选择，不必反复填写作品和角色。")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(controller.partners, key = { it.id }) { partner ->
-                        PartnerSummaryCard(
-                            partner = partner,
-                            onOpen = { controller.selectPartner(partner) },
-                            image = { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.2f) },
-                        )
+                        PartnerSummaryCard(partner = partner, onOpen = { controller.selectPartner(partner) }, image = { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.2f) })
                     }
                 }
             }
@@ -133,17 +131,16 @@ internal fun PartnerSummaryCard(
     image: @Composable () -> Unit,
 ) {
     Surface(
-        color = NunuloColors.Background,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        color = NunuloColors.Paper,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        shadowElevation = 2.dp,
         modifier = modifier.width(220.dp).clickable(onClick = onOpen),
     ) {
         Column {
             image()
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(partner.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)) {
-                    Text(partner.publicCode, color = NunuloColors.Coral, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
-                }
+                CoordinateTag(partner.publicCode)
                 Text(listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Text("${partner.recordCount} 条记录 · ${visibilityLabel(partner.visibility)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
             }

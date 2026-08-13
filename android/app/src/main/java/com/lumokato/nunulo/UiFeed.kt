@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -39,6 +40,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
 internal fun FeedScreen(controller: NunuloController) {
@@ -63,10 +66,10 @@ internal fun FeedScreen(controller: NunuloController) {
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(if (controller.collection == null) "照片动态" else "聚合记录", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                        Text("${controller.feedItems.size} 条记录", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                        Text(if (controller.collection == null) "今天，伙伴去了哪里？" else "聚合记录", style = MaterialTheme.typography.titleLarge)
+                        Text("${controller.feedItems.size} 条照片记录，沿着伙伴、角色与地点继续发现", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                     }
-                    Button(onClick = { controller.selectTab(AppTab.Capture) }) { Text("记录") }
+                    Button(onClick = { controller.selectTab(AppTab.Capture) }) { Text("记一刻") }
                 }
             }
         }
@@ -130,7 +133,7 @@ internal fun FeedRecordCard(
     modifier: Modifier = Modifier,
     image: @Composable () -> Unit,
 ) {
-    Surface(modifier, color = Color.White, shape = RoundedCornerShape(20.dp)) {
+    Surface(modifier, color = NunuloColors.Paper, shape = RoundedCornerShape(26.dp), shadowElevation = 2.dp) {
         Column {
             Box(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
                 image()
@@ -140,11 +143,9 @@ internal fun FeedRecordCard(
                     }
                 }
             }
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(Modifier.padding(horizontal = 15.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(50)) {
-                        Text(record.authorName.take(1), color = NunuloColors.Coral, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
-                    }
+                    RecordStamp(record.authorName.take(1), NunuloColors.Coral)
                     Column(Modifier.padding(start = 8.dp).weight(1f)) {
                         Text(record.authorName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(shortDate(record.takenAt ?: record.createdAt), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
@@ -158,10 +159,10 @@ internal fun FeedRecordCard(
                     record.placeName.takeIf(String::isNotBlank)?.let(::add)
                 }.distinct().take(3)
                 if (summary.isNotEmpty()) Text(summary.joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(record.placeName, color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (record.placeName.isNotBlank()) CoordinateTag(record.placeName, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
                     TextButton(onClick = onLike, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                        Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}")
+                        Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}", color = if (record.liked) NunuloColors.Coral else NunuloColors.Muted)
                     }
                     Text("评 ${record.commentCount}", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
                 }
@@ -192,36 +193,57 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
         )
         return
     }
-    AlertDialog(
-        onDismissRequest = controller::closeRecord,
-        title = { Text(record.note.ifBlank { record.placeName.ifBlank { "记录详情" } }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.widthIn(max = 560.dp)) {
+    Dialog(onDismissRequest = controller::closeRecord, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+            Column {
+                Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RecordStamp("记")
+                        Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                            Text(record.note.ifBlank { record.placeName.ifBlank { "记录详情" } }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${record.authorName} · ${shortDate(record.takenAt ?: record.createdAt)}", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                        }
+                        TextButton(onClick = controller::closeRecord) { Text("关闭") }
+                    }
+                }
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(12.dp),
+                    modifier = Modifier.weight(1f).widthIn(max = 720.dp).fillMaxWidth().align(Alignment.CenterHorizontally),
+                ) {
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(record.photos, key = { it.id }) { photo ->
-                            RemoteImage(photo.displayUrl ?: photo.thumbUrl ?: photo.originalUrl, controller.baseUrl, controller.mediaApi, modifier = Modifier.width(270.dp), aspect = 0.84f)
+                            RemoteImage(photo.displayUrl ?: photo.thumbUrl ?: photo.originalUrl, controller.baseUrl, controller.mediaApi, modifier = Modifier.width(310.dp), aspect = 0.84f)
                         }
                     }
                 }
                 item {
-                    Text("${record.authorName} · ${shortDate(record.takenAt ?: record.createdAt)} · ${visibilityLabel(record.visibility)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                    Text("${if (record.worldVisible) "进入世界发现" else "不进入世界发现"}${if (record.publicShowcase) " · 匿名展示" else ""}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    SectionCard("这一刻") {
+                        if (record.note.isNotBlank()) Text(record.note, style = MaterialTheme.typography.bodyLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            CoordinateTag(visibilityLabel(record.visibility))
+                            if (record.worldVisible) CoordinateTag("世界发现")
+                            if (record.publicShowcase) CoordinateTag("匿名展示")
+                        }
+                        if (record.placeName.isNotBlank()) CoordinateTag(record.placeName)
+                        if (record.latitude != null && record.longitude != null) Text(formatCoordinate(record.latitude, record.longitude), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                if (record.note.isNotBlank()) item { Text(record.note) }
                 if (record.itemTypes.isNotEmpty() || record.works.isNotEmpty() || record.characters.isNotEmpty()) {
                     item {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(record.itemTypes) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "物件类型", mapOf("item_type_id" to item.id))) }, label = { Text(item.name) }) }
-                            items(record.works) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "作品", mapOf("work_id" to item.id))) }, label = { Text(item.name) }) }
-                            items(record.characters) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "角色", mapOf("character_id" to item.id))) }, label = { Text(item.name) }) }
+                        SectionCard("作品与角色") {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(record.itemTypes) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "物件类型", mapOf("item_type_id" to item.id))) }, label = { Text(item.name) }) }
+                                items(record.works) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "作品", mapOf("work_id" to item.id))) }, label = { Text(item.name) }) }
+                                items(record.characters) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "角色", mapOf("character_id" to item.id))) }, label = { Text(item.name) }) }
+                            }
                         }
                     }
                 }
                 if (record.partners.isNotEmpty()) {
                     item {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("出镜伙伴", fontWeight = FontWeight.Bold)
+                        SectionCard("出镜伙伴", "从记录继续进入伙伴自己的相册与足迹。") {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(record.partners, key = { it.id }) { partner -> AssistChip(onClick = { controller.closeRecord(); controller.selectPartner(partner); controller.selectTab(AppTab.Partners) }, label = { Text(partner.name) }) }
                             }
@@ -230,62 +252,61 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 }
                 if (record.events.isNotEmpty()) {
                     item {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("活动", fontWeight = FontWeight.Bold)
+                        SectionCard("活动") {
                             record.events.forEach { event -> TextButton(onClick = { controller.closeRecord(); controller.openEvent(event) }) { Text("${eventTypeLabel(event.eventType)} · ${event.name}") } }
                         }
                     }
                 }
                 item {
-                    Text(record.placeName.ifBlank { "未登记地点" }, fontWeight = FontWeight.Bold)
-                    Text(formatCoordinate(record.latitude, record.longitude), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                }
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { controller.toggleLike(record) }) { Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}") }
-                        Text("${record.commentCount} 条评论", color = NunuloColors.Muted)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { reportOpen = true }) { Text("投诉", color = NunuloColors.Danger) }
+                    SectionCard("回应") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = { controller.toggleLike(record) }) { Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}") }
+                            Text("${record.commentCount} 条评论", color = NunuloColors.Muted, modifier = Modifier.padding(start = 10.dp))
+                            Spacer(Modifier.weight(1f))
+                            if (!record.canEdit) TextButton(onClick = { reportOpen = true }) { Text("投诉", color = NunuloColors.Danger) }
+                        }
                     }
                 }
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("补登记伙伴", fontWeight = FontWeight.Bold)
+                    SectionCard("补登记伙伴", "合照中的其他伙伴会在双方确认后进入相遇记录。") {
                         OutlinedTextField(partnerCode, { partnerCode = it }, label = { Text("伙伴编号，例如 N-...") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         TextButton(enabled = partnerCode.isNotBlank(), onClick = { controller.requestPartnerForRecord(record, partnerCode); partnerCode = "" }) { Text("提交补登记") }
                     }
                 }
                 if (controller.albums.isNotEmpty()) {
                     item {
-                        Text("加入合集", fontWeight = FontWeight.Bold)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(controller.albums, key = { it.id }) { album -> AssistChip(onClick = { controller.addToAlbum(record, album) }, label = { Text(album.title) }) }
+                        SectionCard("加入合集") {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(controller.albums, key = { it.id }) { album -> AssistChip(onClick = { controller.addToAlbum(record, album) }, label = { Text(album.title) }) }
+                            }
                         }
                     }
                 }
-                item { Text("评论", fontWeight = FontWeight.Bold) }
+                item { Text("评论", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 4.dp)) }
                 items(controller.comments, key = { it.id }) { item ->
-                    Column(Modifier.fillMaxWidth().background(NunuloColors.Background, RoundedCornerShape(8.dp)).padding(8.dp)) {
+                    Column(Modifier.fillMaxWidth().background(NunuloColors.Paper, RoundedCornerShape(18.dp)).padding(12.dp)) {
                         Text(item.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                         Text(item.body)
                     }
                 }
                 item {
-                    OutlinedTextField(comment, { comment = it }, label = { Text("写评论") }, minLines = 2, modifier = Modifier.fillMaxWidth())
-                    TextButton(enabled = comment.isNotBlank(), onClick = { controller.addComment(record, comment); comment = "" }) { Text("发布评论") }
+                    SectionCard("写下回应") {
+                        OutlinedTextField(comment, { comment = it }, label = { Text("评论") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                        Button(enabled = comment.isNotBlank(), onClick = { controller.addComment(record, comment); comment = "" }) { Text("发布评论") }
+                    }
+                }
+                if (record.canEdit) {
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { controller.deleteRecord(record) }) { Text(if (controller.isDeletePending(record)) "确认删除" else "删除", color = NunuloColors.Danger) }
+                            Button(onClick = { controller.editRecord(record) }) { Text("编辑记录") }
+                        }
+                    }
                 }
             }
-        },
-        confirmButton = {
-            if (record.canEdit) TextButton(onClick = { controller.editRecord(record) }) { Text("编辑") }
-        },
-        dismissButton = {
-            Row {
-                if (record.canEdit) TextButton(onClick = { controller.deleteRecord(record) }) { Text(if (controller.isDeletePending(record)) "确认删除" else "删除", color = NunuloColors.Danger) }
-                TextButton(onClick = controller::closeRecord) { Text("关闭") }
             }
-        },
-    )
+        }
+    }
 }
 
 @Composable

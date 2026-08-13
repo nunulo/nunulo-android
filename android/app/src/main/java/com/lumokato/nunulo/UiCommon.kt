@@ -14,7 +14,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -46,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,16 +64,20 @@ import com.amap.api.maps.model.LatLngBounds
 import com.amap.api.maps.model.MarkerOptions
 
 internal object NunuloColors {
-    val Coral = Color(0xFFE6635C)
-    val Ink = Color(0xFF26232A)
-    val Muted = Color(0xFF74707A)
-    val Background = Color(0xFFF7F5F2)
-    val Paper = Color(0xFFFFFFFF)
-    val Soft = Color(0xFFFFE9E4)
-    val Hairline = Color(0xFFE8E1DB)
-    val Success = Color(0xFF357A56)
-    val Danger = Color(0xFFB63F3F)
-    val Placeholder = Color(0xFFEDE8E3)
+    val Coral = Color(0xFFEE675F)
+    val CoralDeep = Color(0xFFB73E3B)
+    val Ink = Color(0xFF292634)
+    val Muted = Color(0xFF716C7C)
+    val Background = Color(0xFFF3F1F8)
+    val Paper = Color(0xFFFFFBFF)
+    val Soft = Color(0xFFFFE8E5)
+    val Lilac = Color(0xFFEAE5F5)
+    val MapBlue = Color(0xFF356E82)
+    val Leaf = Color(0xFF3F745D)
+    val Hairline = Color(0xFFDED8E6)
+    val Success = Leaf
+    val Danger = Color(0xFFB43D45)
+    val Placeholder = Color(0xFFE7E2EC)
 }
 
 @Composable
@@ -80,6 +90,8 @@ internal fun NunuloTheme(content: @Composable () -> Unit) {
         onSurface = NunuloColors.Ink,
         outline = NunuloColors.Hairline,
         error = NunuloColors.Danger,
+        secondary = NunuloColors.MapBlue,
+        tertiary = NunuloColors.Leaf,
     )
     val defaults = Typography()
     val typography = Typography(
@@ -89,8 +101,9 @@ internal fun NunuloTheme(content: @Composable () -> Unit) {
         labelLarge = defaults.labelLarge.copy(fontSize = 14.sp),
         labelMedium = defaults.labelMedium.copy(fontSize = 12.sp),
         labelSmall = defaults.labelSmall.copy(fontSize = 12.sp),
-        titleMedium = defaults.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
-        titleLarge = defaults.titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp),
+        titleMedium = defaults.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold),
+        titleLarge = defaults.titleLarge.copy(fontSize = 25.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black),
+        headlineMedium = defaults.headlineMedium.copy(fontSize = 31.sp, lineHeight = 38.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif),
     )
     MaterialTheme(colorScheme = colors, typography = typography, content = content)
 }
@@ -103,22 +116,32 @@ internal fun AuthScreen(
     message: String,
     onLogin: (String, String) -> Unit,
     onRegister: (String, String, String, String, Boolean) -> Unit,
+    initialRegisterMode: Boolean = false,
 ) {
-    var registerMode by rememberSaveable { mutableStateOf(false) }
+    var registerMode by rememberSaveable { mutableStateOf(initialRegisterMode) }
     var login by rememberSaveable { mutableStateOf(initialLogin) }
     var displayName by rememberSaveable { mutableStateOf("") }
     var invite by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var accepted by rememberSaveable { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
-    Box(Modifier.fillMaxSize().background(NunuloColors.Background).padding(24.dp), contentAlignment = Alignment.Center) {
-        Card(Modifier.fillMaxWidth().widthIn(max = 480.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Surface(color = NunuloColors.Soft, shape = CircleShape) {
-                    Text("N", color = NunuloColors.Coral, fontSize = 26.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+    Box(Modifier.fillMaxSize().background(NunuloColors.Background).padding(horizontal = 20.dp, vertical = 24.dp), contentAlignment = Alignment.Center) {
+        Card(
+            Modifier.fillMaxWidth().widthIn(max = 480.dp),
+            colors = CardDefaults.cardColors(containerColor = NunuloColors.Paper),
+            shape = RoundedCornerShape(30.dp),
+            border = BorderStroke(1.dp, NunuloColors.Hairline),
+        ) {
+            Column(
+                Modifier.fillMaxHeight(0.96f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    RecordStamp("N", NunuloColors.Coral)
+                    Text("NUNULO · 伙伴旅行记录册", color = NunuloColors.Muted, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
-                Text("Nunulo", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-                Text("动态、伙伴、活动与足迹，共用同一条真实记录。", color = NunuloColors.Muted)
+                Text("把伙伴走过的地方，\n收进同一本相册。", style = MaterialTheme.typography.headlineMedium)
+                Text("从一张照片开始，留下伙伴、角色、活动与地点之间真实的联系。", color = NunuloColors.Muted)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !registerMode, onClick = { registerMode = false }, label = { Text("登录") })
                     FilterChip(selected = registerMode, onClick = { registerMode = true }, label = { Text("注册") })
@@ -130,12 +153,16 @@ internal fun AuthScreen(
                 }
                 OutlinedTextField(password, { password = it }, label = { Text("密码") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (registerMode) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(accepted, { accepted = it })
-                        Text("我同意")
-                        TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(BuildConfig.NUNULO_API_BASE_URL, config?.termsUrl ?: "/terms/")) }) { Text("服务条款") }
-                        Text("与")
-                        TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(BuildConfig.NUNULO_API_BASE_URL, config?.privacyUrl ?: "/privacy/")) }) { Text("隐私政策") }
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(accepted, { accepted = it })
+                            Text("我已阅读并同意以下协议", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(Modifier.padding(start = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(BuildConfig.NUNULO_API_BASE_URL, config?.termsUrl ?: "/terms/")) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("服务条款") }
+                            Text("与", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(BuildConfig.NUNULO_API_BASE_URL, config?.privacyUrl ?: "/privacy/")) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("隐私政策") }
+                        }
                     }
                 }
                 Button(
@@ -145,9 +172,38 @@ internal fun AuthScreen(
                     enabled = !busy && login.isNotBlank() && password.isNotBlank() && (!registerMode || displayName.isNotBlank()),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) { Text(if (busy) "处理中" else if (registerMode) "创建账号" else "登录") }
-                Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                if (message.isNotBlank()) {
+                    Surface(color = NunuloColors.Lilac, shape = RoundedCornerShape(12.dp)) {
+                        Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp))
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+internal fun RecordStamp(label: String, color: Color = NunuloColors.Coral, modifier: Modifier = Modifier) {
+    Surface(
+        color = color,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier,
+        shadowElevation = 1.dp,
+    ) {
+        Text(
+            label,
+            color = Color.White,
+            fontWeight = FontWeight.Black,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+        )
+    }
+}
+
+@Composable
+internal fun CoordinateTag(label: String, modifier: Modifier = Modifier) {
+    Surface(color = NunuloColors.Lilac, shape = RoundedCornerShape(50), modifier = modifier) {
+        Text(label, color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
     }
 }
 
@@ -174,11 +230,16 @@ internal fun RemoteImage(url: String?, apiBase: String, api: NunuloApi, modifier
 
 @Composable
 internal fun SectionCard(title: String, subtitle: String = "", content: @Composable () -> Unit) {
-    Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        color = NunuloColors.Paper,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, NunuloColors.Hairline),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium)
             if (subtitle.isNotBlank()) Text(subtitle, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-            HorizontalDivider(color = NunuloColors.Hairline)
+            HorizontalDivider(color = NunuloColors.Hairline.copy(alpha = 0.72f))
             content()
         }
     }

@@ -62,7 +62,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             }
         }
         item {
-            SectionCard("个人足迹", "家位置只对你本人可见；这里只展示自己的精确地点，不把地图强塞进所有页面。") {
+            SectionCard("个人足迹", "家位置与精确坐标只对你本人可见。") {
                 FootprintMap(
                     home = controller.footprint.home,
                     items = controller.footprint.items,
@@ -79,7 +79,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                         TextButton(onClick = { controller.setHome(homeName, location.latitude, location.longitude) }) { Text("将当前位置登记为家") }
                     } ?: TextButton(onClick = { controller.requestLocation(LocationPurpose.Home) }) { Text("获取当前位置并登记家位置") }
                 }
-                Text("${controller.footprint.items.size} 个有坐标的记录地点", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                CoordinateTag("${controller.footprint.items.size} 个有坐标的记录地点")
             }
         }
         item {

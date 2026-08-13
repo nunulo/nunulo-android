@@ -189,6 +189,166 @@ fun ProfileOwnerScreenshot() = ScreenshotFrame(AppTab.Profile) {
     }
 }
 
+@PreviewTest
+@Preview(name = "auth_login_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun AuthLoginScreenshot() = NunuloTheme {
+    AuthScreen(
+        initialLogin = "",
+        config = null,
+        busy = false,
+        message = "",
+        onLogin = { _, _ -> },
+        onRegister = { _, _, _, _, _ -> },
+    )
+}
+
+@PreviewTest
+@Preview(name = "discover_content_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun DiscoverContentScreenshot() = ScreenshotFrame(AppTab.Discover) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("从作品走进世界", style = MaterialTheme.typography.titleLarge)
+                Text("沿着作品、角色、活动与地区，找到下一条真实记录。", color = NunuloColors.Muted)
+            }
+        }
+        item {
+            SectionCard("正在被记录") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CoordinateTag("BanG Dream! · 128 条")
+                    CoordinateTag("MyGO!!!!! · 42 条")
+                }
+                Text("高松灯", style = MaterialTheme.typography.titleMedium)
+                Text("12 位成员在 8 个地点留下了照片", color = NunuloColors.Muted)
+            }
+        }
+        item {
+            SectionCard("世界热门地区", "达到隐私与内容阈值后才会出现。") {
+                ScreenshotMedia("北京 · 18 条 / 7 人")
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "capture_relations_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecordStamp("2")
+                Column(Modifier.weight(1f)) {
+                    Text("关系与地点", style = MaterialTheme.typography.titleLarge)
+                    Text("这张照片里有谁，又发生在哪里", color = NunuloColors.Muted)
+                }
+                Text("2/4", color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold)
+            }
+        }
+        item {
+            SectionCard("伙伴", "选择后会带入它的作品与角色。") {
+                CoordinateTag("去过很多次演出的高松灯棉花娃娃")
+            }
+        }
+        item {
+            SectionCard("地点", "照片 GNSS 优先；没有时可以使用设备位置或地图补点。") {
+                CoordinateTag("北京工人体育场北门外场区域")
+                Text("39.93050, 116.44690 · 照片 GNSS", color = NunuloColors.Muted)
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "footprint_content_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun FootprintContentScreenshot() = ScreenshotFrame(AppTab.Profile) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("个人足迹", "精确位置只对自己可见。") {
+                ScreenshotMedia("8 个地点 · 42 条记录")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CoordinateTag("北京 · 18")
+                    CoordinateTag("上海 · 9")
+                    CoordinateTag("广州 · 6")
+                }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "auth_register_narrow_320x720", widthDp = 320, heightDp = 720, showBackground = true)
+@Composable
+fun AuthRegisterNarrowScreenshot() = NunuloTheme {
+    AuthScreen(
+        initialLogin = "",
+        config = null,
+        busy = false,
+        message = "注册失败时会在这里说明具体原因，并保留已经填写的内容。",
+        onLogin = { _, _ -> },
+        onRegister = { _, _, _, _, _ -> },
+        initialRegisterMode = true,
+    )
+}
+
+@PreviewTest
+@Preview(name = "capture_confirm_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun CaptureConfirmScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecordStamp("4")
+                Column(Modifier.weight(1f)) {
+                    Text("发布确认", style = MaterialTheme.typography.titleLarge)
+                    Text("确认谁能看到，以及是否进入世界发现", color = NunuloColors.Muted)
+                }
+                Text("4/4", color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold)
+            }
+        }
+        item {
+            SectionCard("这一刻已准备好") {
+                Text("3 张照片 · 全部安全上传", color = NunuloColors.Success, fontWeight = FontWeight.Bold)
+                Text("高松灯棉花娃娃 · MyGO!!!!! · 北京工人体育场北门外场区域", color = NunuloColors.Muted)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CoordinateTag("所有注册成员")
+                    CoordinateTag("进入世界发现")
+                }
+                androidx.compose.material3.Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("发布记录") }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "record_interactions_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun RecordInteractionsScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ScreenshotMedia("3 张照片") }
+        item {
+            SectionCard("第一次带伙伴一起看现场") {
+                Text("带着伙伴去看演出的旅行收藏者 · 2026-08-13", color = NunuloColors.Muted)
+                CoordinateTag("北京工人体育场北门外场区域")
+                Text("散场以后遇到了同好，也补了一张很喜欢的合照。")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("♥ 28", color = NunuloColors.Coral, fontWeight = FontWeight.Bold)
+                    Text("6 条评论", color = NunuloColors.Muted)
+                }
+            }
+        }
+        item {
+            SectionCard("评论") {
+                Text("灯灯也来过这里！", fontWeight = FontWeight.Bold)
+                Text("@mygo_friend · 刚刚", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ScreenshotAvatar() {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {

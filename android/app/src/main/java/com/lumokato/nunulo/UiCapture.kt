@@ -74,9 +74,15 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
     val step = CaptureStep.valueOf(stepName)
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(step.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text(step.hint, color = NunuloColors.Muted)
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    RecordStamp("${step.ordinal + 1}")
+                    Column(Modifier.weight(1f)) {
+                        Text(step.title, style = MaterialTheme.typography.titleLarge)
+                        Text(step.hint, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text("${step.ordinal + 1}/4", color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold)
+                }
                 CaptureStepIndicator(step)
             }
         }
@@ -278,9 +284,10 @@ internal fun CaptureStepIndicator(step: CaptureStep) {
 
 @Composable
 internal fun CapturePhotoEmptyState(onCamera: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(220.dp).background(NunuloColors.Placeholder, RoundedCornerShape(10.dp)).clickable(onClick = onCamera), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxWidth().height(184.dp).background(NunuloColors.Lilac, RoundedCornerShape(18.dp)).clickable(onClick = onCamera), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("拍下第一张照片", fontWeight = FontWeight.Bold)
+            RecordStamp("＋", NunuloColors.MapBlue)
+            Text("拍下第一张照片", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             Text("也可以从系统相册批量选择", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
         }
     }

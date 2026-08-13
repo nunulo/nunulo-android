@@ -42,7 +42,13 @@ internal fun DiscoveryScreen(controller: NunuloController) {
     var worldMapOpen by rememberSaveable { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            SectionCard("类别发现", "物件类型、作品、组合和角色是正式维度；关注后会参与关注动态。") {
+            Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("从作品走进世界", style = MaterialTheme.typography.titleLarge)
+                Text("沿着作品、角色、活动与地区，找到下一条真实记录。", color = NunuloColors.Muted)
+            }
+        }
+        item {
+            SectionCard("正在被记录", "关注作品、组合或角色后，它们会进入你的关注动态。") {
                 listOf("item_type" to "物件类型", "work" to "作品 / IP", "group" to "乐队 / 组合", "character" to "角色").forEach { (type, title) ->
                     Text(title, fontWeight = FontWeight.Bold)
                     val values = controller.discovery.catalog[type].orEmpty()
@@ -63,7 +69,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                         }
                     }
                 }
-                TextButton(onClick = { candidateOpen = true }) { Text("没有对应作品、组合或角色？提交候选") }
+                TextButton(onClick = { candidateOpen = true }) { Text("没有找到？提交目录候选") }
             }
         }
         item {
@@ -108,7 +114,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
             }
         }
         item {
-            SectionCard("世界热门地区", "只显示达到成员人数和记录数阈值的地区聚合；进入地区后再看动态，不直接铺满精确点。") {
+            SectionCard("世界热门地区", "达到隐私与内容阈值后才会出现；进入地区后再看照片记录。") {
                 if (controller.discovery.worldRegions.isEmpty()) Text("当前还没有达到 3 条 / 2 人阈值的地区。", color = NunuloColors.Muted)
                 if (controller.discovery.worldRegions.isNotEmpty()) {
                     TextButton(onClick = { worldMapOpen = !worldMapOpen }) { Text(if (worldMapOpen) "收起地区地图" else "打开地区地图") }

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -169,20 +170,23 @@ private fun NunuloApp() {
 
 @Composable
 internal fun NunuloTopBar(tab: AppTab, message: String, busy: Boolean, unreadCount: Int, onRefresh: () -> Unit, onNotifications: () -> Unit) {
-    Surface(color = Color.White) {
+    Surface(color = NunuloColors.Paper, shadowElevation = 1.dp) {
         Column(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = NunuloColors.Coral, shape = androidx.compose.foundation.shape.RoundedCornerShape(9.dp)) {
-                    Text("N", color = Color.White, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                RecordStamp(if (tab == AppTab.Capture) "记" else "N", if (tab == AppTab.Discover) NunuloColors.MapBlue else NunuloColors.Coral)
+                Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                    Text(tab.title, style = MaterialTheme.typography.titleLarge)
+                    Text(if (tab == AppTab.Capture) "此刻与伙伴在哪里" else "伙伴旅行记录册", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
                 }
-                Text(tab.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 10.dp).weight(1f))
-                TextButton(onClick = onRefresh, enabled = !busy) { Text(if (busy) "同步中" else "刷新") }
+                Box(Modifier.size(44.dp).clickable(enabled = !busy, onClick = onRefresh), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = if (busy) "同步中" else "刷新", tint = if (busy) NunuloColors.Muted else NunuloColors.MapBlue)
+                }
                 Box(Modifier.size(44.dp).clickable(onClick = onNotifications), contentAlignment = Alignment.Center) {
                     Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知")
                     if (unreadCount > 0) Badge(Modifier.align(Alignment.TopEnd)) { Text(unreadCount.coerceAtMost(99).toString()) }
                 }
             }
-            if (message.isNotBlank()) Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
+            if (message.isNotBlank()) Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
         }
     }
 }
@@ -196,8 +200,8 @@ private fun NunuloBottomBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
         AppTab.Partners to (Icons.Filled.Groups to Icons.Outlined.Groups),
         AppTab.Profile to (Icons.Filled.Person to Icons.Outlined.PersonOutline),
     )
-    Surface(color = Color.White, shadowElevation = 8.dp, modifier = Modifier.navigationBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(60.dp)) {
+    Surface(color = NunuloColors.Paper, shadowElevation = 10.dp, modifier = Modifier.navigationBarsPadding()) {
+        Row(Modifier.fillMaxWidth().height(66.dp)) {
             AppTab.entries.forEach { tab ->
                 val active = selected == tab
                 val icon = icons.getValue(tab)
