@@ -57,7 +57,7 @@ jobs:
           printf 'certificate_sha1=%s\napplication_id=%s\nversion_code=%s\n' "$actual_sha1" "$application_id" "$version_code"
           test "$actual_sha1" = "ced42065d8199c19ad84c970a4bbfd96db377c10"
           test "$application_id" = "com.lumokato.nunulo"
-          test "$version_code" = "10"
+          test "$version_code" = "11"
           grep -Fq "$AMAP_ANDROID_KEY_RELEASE" "$manifest"
       - name: Verify release tag matches app version
         if: startsWith(github.ref, 'refs/tags/')
