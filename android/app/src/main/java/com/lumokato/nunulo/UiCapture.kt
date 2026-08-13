@@ -56,14 +56,38 @@ import com.amap.api.maps.model.MarkerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private enum class CaptureStep(val title: String, val hint: String) {
+    Photos("照片", "先选好这次记录的 1–9 张照片"),
+    Relations("关系与地点", "关联伙伴、作品、角色和真实地点"),
+    Details("补充信息", "写下时间、说明和参与活动"),
+    Confirm("发布确认", "最后检查可见范围与发布状态"),
+}
+
 @Composable
 internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onCamera: () -> Unit) {
     val draft = controller.draft
     val validation = validateDraft(draft)
     var mapOpen by rememberSaveable { mutableStateOf(false) }
     var candidateOpen by rememberSaveable { mutableStateOf(false) }
+    var stepName by rememberSaveable { mutableStateOf(CaptureStep.Photos.name) }
+    val step = CaptureStep.valueOf(stepName)
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(step.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text(step.hint, color = NunuloColors.Muted)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    CaptureStep.entries.forEachIndexed { index, value ->
+                        Surface(
+                            color = if (value == step) NunuloColors.Coral else NunuloColors.Hairline,
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.weight(1f).height(4.dp),
+                        ) {}
+                    }
+                }
+            }
+        }
+        if (step == CaptureStep.Photos) item {
             SectionCard(if (draft.editingId == null) "实时记录" else "编辑记录", "相机优先推荐 1 张；历史相册可选择 1–9 张，首图即封面。") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onCamera, enabled = !controller.busy && draft.photos.size < 9) { Text("应用内拍摄") }
@@ -92,13 +116,13 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 }
             }
         }
-        item {
+        if (step == CaptureStep.Details) item {
             SectionCard("拍摄时间与说明", "服务端照片元数据优先填入时间；可在历史补录时修正。") {
                 OutlinedTextField(draft.takenAt, { controller.updateDraft(draft.copy(takenAt = it)) }, label = { Text("拍摄时间（ISO，可留空）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(draft.note, { controller.updateDraft(draft.copy(note = it)) }, label = { Text("这次记录") }, minLines = 3, modifier = Modifier.fillMaxWidth())
             }
         }
-        item {
+        if (step == CaptureStep.Relations) item {
             SectionCard("地点", "优先照片 GNSS；没有时使用手机 GPS；仍可地图补点或无地点发布。") {
                 OutlinedTextField(draft.placeName, { controller.updateDraft(draft.copy(placeName = it)) }, label = { Text("地点名称（选填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -126,7 +150,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 }
             }
         }
-        item {
+        if (step == CaptureStep.Relations) item {
             SectionCard("伙伴", "选择自己的伙伴可自动继承其物件类型、作品与角色；一条合照可登记多个伙伴。") {
                 if (controller.partners.isEmpty()) Text("还没有伙伴，可先发布后补登记，或到伙伴页创建。", color = NunuloColors.Muted)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -150,7 +174,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 }
             }
         }
-        item {
+        if (step == CaptureStep.Relations) item {
             SectionCard("类别", "没有伙伴时请选择允许的物件类型、作品或角色；不使用自由 tag。") {
                 CatalogSelection("物件类型", controller.discovery.catalog["item_type"].orEmpty(), draft.itemTypeIds) { id -> controller.updateDraft(draft.copy(itemTypeIds = toggleId(draft.itemTypeIds, id))) }
                 CatalogSelection("作品 / IP", controller.discovery.catalog["work"].orEmpty(), draft.workIds) { id -> controller.updateDraft(draft.copy(workIds = toggleId(draft.workIds, id))) }
@@ -158,7 +182,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 TextButton(onClick = { candidateOpen = true }) { Text("没有合适项？提交候选") }
             }
         }
-        item {
+        if (step == CaptureStep.Details) item {
             SectionCard("活动", "一条记录最多关联一个线下活动，可同时关联多个线上生日合集。") {
                 if (controller.discovery.events.isEmpty()) Text("暂无可选活动，可在发现页创建。", color = NunuloColors.Muted)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -181,7 +205,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 }
             }
         }
-        item {
+        if (step == CaptureStep.Confirm) item {
             SectionCard("可见性", "成员可见、世界发现和互联网匿名展示是三层独立选择。") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(listOf("private", "followers", "public")) { visibility ->
@@ -215,12 +239,24 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 Text("匿名展示只提供缩略图、区域级位置和必要公开文字。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
-        item {
+        if (step == CaptureStep.Confirm) item {
             SectionCard("发布检查", validation.missingText) {
                 Text("照片 ${validation.photoCount}/9 · ${if (validation.allPhotosReady) "全部已上传" else "仍有待处理"} · ${if (validation.coordinatesValid) "地点有效" else "地点无效"}")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = controller::saveDraft, enabled = validation.ready && !controller.busy, modifier = Modifier.weight(1f)) { Text(if (draft.editingId == null) "发布记录" else "保存修改") }
                     TextButton(onClick = controller::clearDraft, enabled = !controller.busy) { Text("清除") }
+                }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (step != CaptureStep.Photos) TextButton(onClick = { stepName = CaptureStep.entries[step.ordinal - 1].name }) { Text("上一步") }
+                Spacer(Modifier.weight(1f))
+                if (step != CaptureStep.Confirm) {
+                    Button(
+                        onClick = { stepName = CaptureStep.entries[step.ordinal + 1].name },
+                        enabled = step != CaptureStep.Photos || draft.photos.isNotEmpty(),
+                    ) { Text("下一步") }
                 }
             }
         }
@@ -267,10 +303,20 @@ private fun DraftPhotoPreview(item: DraftPhotoItem, controller: NunuloController
 
 @Composable
 private fun CatalogSelection(title: String, items: List<CatalogEntityItem>, selected: List<String>, onToggle: (String) -> Unit) {
+    var query by rememberSaveable(title) { mutableStateOf("") }
+    val matches = remember(items, query) { items.filter { it.matchesCatalogQuery(query) } }
     Text(title, fontWeight = FontWeight.Bold)
-    if (items.isEmpty()) Text("暂无候选", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        label = { Text("搜索$title") },
+        placeholder = { Text("支持中文、日文、罗马字和别名") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    if (matches.isEmpty()) Text(if (query.isBlank()) "暂无候选" else "没有找到“${query.trim()}”", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(items, key = { it.id }) { item -> FilterChip(selected = item.id in selected, onClick = { onToggle(item.id) }, label = { Text(item.canonicalName) }) }
+        items(matches, key = { it.id }) { item -> FilterChip(selected = item.id in selected, onClick = { onToggle(item.id) }, label = { Text(item.canonicalName) }) }
     }
 }
 
@@ -345,7 +391,8 @@ private fun toggleId(values: List<String>, id: String): List<String> = if (id in
 
 private fun locationSourceLabel(value: String): String = when (value) {
     "photo_exif" -> "照片 GNSS"
-    "device_gps" -> "手机 GPS"
+    "device_current", "device_gps" -> "当前设备位置"
+    "device_last_known" -> "较早的设备位置，请确认"
     "map", "map_picker" -> "地图选点"
     "manual" -> "手工坐标"
     else -> "未登记"

@@ -30,12 +30,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Unit) {
     val user = controller.currentUser
+    val uriHandler = LocalUriHandler.current
+    val adminRole = user?.roles.orEmpty().firstOrNull { it == "owner" || it == "admin" }
     var homeName by rememberSaveable { mutableStateOf(controller.footprint.home?.name ?: "家") }
     var albumTitle by rememberSaveable { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -49,9 +52,14 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                     Column(Modifier.weight(1f)) {
                         Text(user?.displayName ?: "Nunulo 成员", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                         Text(user?.username?.let { "@$it" } ?: user?.email.orEmpty(), color = NunuloColors.Muted)
+                        if (adminRole != null) Text(if (adminRole == "owner") "站点所有者" else "管理员", color = NunuloColors.Coral, fontWeight = FontWeight.Bold)
                         Text("存储 ${formatBytes(user?.storageUsageBytes ?: 0)} / ${formatBytes(user?.storageQuotaBytes ?: 0)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                     }
                     TextButton(onClick = controller::logout) { Text("退出") }
+                }
+                if (adminRole != null) {
+                    TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, "/admin/")) }) { Text("打开 Web 管理台") }
+                    Text("Android 只显示身份和入口；目录、举报、活动与存储治理仍在独立 Web Admin。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

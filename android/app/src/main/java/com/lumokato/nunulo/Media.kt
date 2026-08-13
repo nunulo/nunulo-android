@@ -244,6 +244,9 @@ internal fun savePendingUpload(prefs: SharedPreferences, pending: PendingUpload)
         .put("latitude", draft.latitude)
         .put("longitude", draft.longitude)
         .put("location_source", draft.locationSource)
+        .put("location_provider", draft.locationProvider)
+        .put("location_captured_at_millis", draft.locationCapturedAtMillis)
+        .put("location_accuracy_meters", draft.locationAccuracyMeters)
         .put("location_privacy", draft.locationPrivacy)
         .put("note", draft.note)
         .put("taken_at", draft.takenAt)
@@ -306,6 +309,9 @@ internal fun loadPendingUpload(prefs: SharedPreferences): PendingUpload? {
                 latitude = payload.optString("latitude"),
                 longitude = payload.optString("longitude"),
                 locationSource = payload.optString("location_source", "none"),
+                locationProvider = payload.optionalString("location_provider"),
+                locationCapturedAtMillis = payload.optLong("location_captured_at_millis").takeIf { payload.has("location_captured_at_millis") && !payload.isNull("location_captured_at_millis") },
+                locationAccuracyMeters = payload.optionalDouble("location_accuracy_meters")?.toFloat(),
                 locationPrivacy = payload.optString("location_privacy", "exact"),
                 note = payload.optString("note"),
                 takenAt = payload.optString("taken_at"),

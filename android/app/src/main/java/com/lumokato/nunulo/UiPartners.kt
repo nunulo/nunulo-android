@@ -137,7 +137,13 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
     var workId by rememberSaveable(initial?.id) { mutableStateOf(initial?.work?.id.orEmpty()) }
     var characterId by rememberSaveable(initial?.id) { mutableStateOf(initial?.character?.id.orEmpty()) }
     var visibility by rememberSaveable(initial?.id) { mutableStateOf(initial?.visibility ?: "private") }
-    val characters = controller.discovery.catalog["character"].orEmpty().filter { it.work == null || workId.isBlank() || it.work.id == workId }
+    var workQuery by rememberSaveable(initial?.id) { mutableStateOf("") }
+    var characterQuery by rememberSaveable(initial?.id) { mutableStateOf("") }
+    var candidateType by rememberSaveable(initial?.id) { mutableStateOf<String?>(null) }
+    val works = controller.discovery.catalog["work"].orEmpty().filter { it.matchesCatalogQuery(workQuery) }
+    val characters = controller.discovery.catalog["character"].orEmpty()
+        .filter { it.work == null || workId.isBlank() || it.work.id == workId }
+        .filter { it.matchesCatalogQuery(characterQuery) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "登记伙伴" else "编辑伙伴") },
@@ -152,17 +158,21 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                 }
                 item {
                     Text("作品 / IP", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(workQuery, { workQuery = it }, label = { Text("搜索作品 / IP") }, placeholder = { Text("中文、日文、罗马字或别名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         item { FilterChip(selected = workId.isBlank(), onClick = { workId = ""; characterId = "" }, label = { Text("其他 / 无作品") }) }
-                        items(controller.discovery.catalog["work"].orEmpty(), key = { it.id }) { entity -> FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; characterId = "" }, label = { Text(entity.canonicalName) }) }
+                        items(works, key = { it.id }) { entity -> FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; characterId = "" }, label = { Text(entity.canonicalName) }) }
                     }
+                    if (workQuery.isNotBlank() && works.isEmpty()) TextButton(onClick = { candidateType = "work" }) { Text("没有“${workQuery.trim()}”？提交作品候选") }
                 }
                 item {
                     Text("角色", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(characterQuery, { characterQuery = it }, label = { Text("搜索角色") }, placeholder = { Text("中文、日文、罗马字或别名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         item { FilterChip(selected = characterId.isBlank(), onClick = { characterId = "" }, label = { Text("无角色") }) }
                         items(characters, key = { it.id }) { entity -> FilterChip(selected = characterId == entity.id, onClick = { characterId = entity.id; entity.work?.id?.let { workId = it } }, label = { Text(entity.canonicalName) }) }
                     }
+                    if (characterQuery.isNotBlank() && characters.isEmpty()) TextButton(enabled = workId.isNotBlank(), onClick = { candidateType = "character" }) { Text(if (workId.isBlank()) "先选择角色所属作品" else "没有“${characterQuery.trim()}”？提交角色候选") }
                 }
                 item {
                     Text("伙伴主页可见性", fontWeight = FontWeight.Bold)
@@ -178,6 +188,32 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                 onDismiss()
             }) { Text("保存") }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+    candidateType?.let { type ->
+        PartnerCatalogCandidateDialog(
+            controller = controller,
+            type = type,
+            initialName = if (type == "work") workQuery else characterQuery,
+            workId = workId.takeIf(String::isNotBlank),
+            onDismiss = { candidateType = null },
+        )
+    }
+}
+
+@Composable
+private fun PartnerCatalogCandidateDialog(controller: NunuloController, type: String, initialName: String, workId: String?, onDismiss: () -> Unit) {
+    var name by rememberSaveable(type, initialName) { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (type == "work") "提交作品候选" else "提交角色候选") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("候选会进入待审核状态；正式归并和别名治理由 Web Admin 完成。", color = NunuloColors.Muted)
+                OutlinedTextField(name, { name = it }, label = { Text("候选名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank() && (type != "character" || workId != null), onClick = { controller.createCatalogCandidate(type, name, workId); onDismiss() }) { Text("提交") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

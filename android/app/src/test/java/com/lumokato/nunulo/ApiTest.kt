@@ -132,6 +132,9 @@ class ApiTest {
                 latitude = "35.7056",
                 longitude = "139.7519",
                 locationSource = "photo_exif",
+                locationProvider = "exif",
+                locationCapturedAtMillis = 1_786_640_000_000,
+                locationAccuracyMeters = 18.5f,
                 locationPrivacy = "regional",
                 visibility = "public",
                 worldVisible = true,
@@ -148,6 +151,9 @@ class ApiTest {
         assertEquals(listOf("photo-2", "photo-1"), payload.getJSONArray("photo_ids").let { array -> List(array.length()) { array.getString(it) } })
         assertEquals("request-1", payload.getString("client_request_id"))
         assertEquals("photo_exif", payload.getString("location_source"))
+        assertEquals("exif", payload.getString("location_provider"))
+        assertEquals("2026-08-13T16:53:20Z", payload.getString("location_captured_at"))
+        assertEquals(18.5, payload.getDouble("location_accuracy_meters"), 0.001)
         assertEquals("regional", payload.getString("location_privacy"))
         assertTrue(payload.getBoolean("world_visible"))
         assertTrue(payload.getBoolean("public_showcase"))

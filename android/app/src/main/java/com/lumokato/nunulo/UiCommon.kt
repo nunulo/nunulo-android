@@ -80,7 +80,18 @@ internal fun NunuloTheme(content: @Composable () -> Unit) {
         outline = NunuloColors.Hairline,
         error = NunuloColors.Danger,
     )
-    MaterialTheme(colorScheme = colors, typography = Typography(), content = content)
+    val defaults = Typography()
+    val typography = Typography(
+        bodyLarge = defaults.bodyLarge.copy(fontSize = 16.sp, lineHeight = 24.sp),
+        bodyMedium = defaults.bodyMedium.copy(fontSize = 14.sp, lineHeight = 21.sp),
+        bodySmall = defaults.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
+        labelLarge = defaults.labelLarge.copy(fontSize = 14.sp),
+        labelMedium = defaults.labelMedium.copy(fontSize = 12.sp),
+        labelSmall = defaults.labelSmall.copy(fontSize = 12.sp),
+        titleMedium = defaults.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+        titleLarge = defaults.titleLarge.copy(fontSize = 24.sp, lineHeight = 30.sp),
+    )
+    MaterialTheme(colorScheme = colors, typography = typography, content = content)
 }
 
 @Composable

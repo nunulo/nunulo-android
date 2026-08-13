@@ -35,7 +35,16 @@ internal data class CatalogEntityItem(
     val followed: Boolean = false,
     val recordCount: Int = 0,
     val work: CatalogRef? = null,
+    val group: CatalogRef? = null,
 )
+
+internal fun CatalogEntityItem.matchesCatalogQuery(query: String): Boolean {
+    val needle = query.trim().lowercase()
+    if (needle.isBlank()) return true
+    return sequenceOf(canonicalName, work?.name.orEmpty())
+        .plus(aliases.asSequence())
+        .any { it.lowercase().contains(needle) }
+}
 
 internal data class PartnerItem(
     val id: String,
@@ -211,6 +220,9 @@ internal data class UploadDraft(
     val latitude: String = "",
     val longitude: String = "",
     val locationSource: String = "none",
+    val locationProvider: String? = null,
+    val locationCapturedAtMillis: Long? = null,
+    val locationAccuracyMeters: Float? = null,
     val locationPrivacy: String = "exact",
     val note: String = "",
     val takenAt: String = "",
@@ -269,6 +281,7 @@ internal fun parseCatalogEntity(json: JSONObject): CatalogEntityItem = CatalogEn
     followed = json.optBoolean("followed"),
     recordCount = json.optInt("record_count"),
     work = json.optJSONObject("work")?.let(::parseCatalogRef),
+    group = json.optJSONObject("group")?.let(::parseCatalogRef),
 )
 
 internal fun parsePartner(json: JSONObject): PartnerItem = PartnerItem(
@@ -410,6 +423,9 @@ internal fun checkinPayload(draft: UploadDraft, requestId: String?): JSONObject 
         .put("latitude", latitude)
         .put("longitude", longitude)
         .put("location_source", if (latitude == null || longitude == null) "none" else draft.locationSource)
+        .put("location_provider", draft.locationProvider)
+        .put("location_captured_at", draft.locationCapturedAtMillis?.let { java.time.Instant.ofEpochMilli(it).toString() })
+        .put("location_accuracy_meters", draft.locationAccuracyMeters)
         .put("location_privacy", draft.locationPrivacy)
         .put("partner_ids", JSONArray(draft.partnerIds))
         .put("item_type_ids", JSONArray(draft.itemTypeIds))

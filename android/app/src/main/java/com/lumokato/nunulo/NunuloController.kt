@@ -148,7 +148,7 @@ internal class NunuloController(
         val feed = api.listCheckins(apiBase, token, feedScope, feedOrder)
         val mine = if (feedScope == FeedScope.Mine) feed else api.listCheckins(apiBase, token, FeedScope.Mine, FeedOrder.Latest)
         val discovery = api.discovery(apiBase, token)
-        val completeCatalog = listOf("item_type", "work", "character").associateWith { entityType ->
+        val completeCatalog = listOf("item_type", "work", "group", "character").associateWith { entityType ->
             api.listCatalog(apiBase, token, entityType)
         }
         LoadedState(
@@ -211,7 +211,7 @@ internal class NunuloController(
         if (!hasLocationPermission(context)) {
             requestLocationPermission = true
         } else {
-            coroutineScope.launch { applyLocation(purpose, currentLocation(context)?.let { MapPoint(it.latitude, it.longitude) }) }
+            coroutineScope.launch { applyLocation(purpose, currentLocation(context)) }
         }
     }
 
@@ -224,26 +224,31 @@ internal class NunuloController(
             message = "未开启定位权限，仍可使用照片 GNSS、地图选点或无地点发布"
             return
         }
-        coroutineScope.launch { applyLocation(pendingLocationPurpose, currentLocation(context)?.let { MapPoint(it.latitude, it.longitude) }) }
+        coroutineScope.launch { applyLocation(pendingLocationPurpose, currentLocation(context)) }
     }
 
-    private fun applyLocation(purpose: LocationPurpose, point: MapPoint?) {
-        if (point == null) {
+    private fun applyLocation(purpose: LocationPurpose, fix: LocationFix?) {
+        if (fix == null) {
             message = "暂时拿不到当前位置，可稍后重试或手动选点"
             return
         }
+        val point = MapPoint(fix.latitude, fix.longitude)
         currentLocation = point
         if (purpose == LocationPurpose.Draft && draft.locationSource !in setOf("photo_exif", "map", "map_picker", "manual")) {
             draft = draft.copy(
                 latitude = "%.6f".format(point.latitude),
                 longitude = "%.6f".format(point.longitude),
-                locationSource = "device_gps",
+                locationSource = if (fix.isLastKnown) "device_last_known" else "device_current",
+                locationProvider = fix.provider,
+                locationCapturedAtMillis = fix.capturedAtMillis,
+                locationAccuracyMeters = fix.accuracyMeters,
             )
         }
+        val quality = listOfNotNull(fix.provider.takeIf(String::isNotBlank), fix.accuracyMeters?.let { "约 ${it.toInt()} 米" }).joinToString(" · ")
         message = when (purpose) {
-            LocationPurpose.Draft -> "已使用设备位置；照片含 GNSS 时会优先采用照片位置"
-            LocationPurpose.Home -> "已取得当前位置，可登记为家位置"
-            LocationPurpose.Place -> "已取得当前位置，可保存为活动地点"
+            LocationPurpose.Draft -> if (fix.isLastKnown) "仅取得较早的位置（$quality），请确认后使用" else "已取得设备位置（$quality）；照片含 GNSS 时会优先采用照片位置"
+            LocationPurpose.Home -> "已取得当前位置（$quality），确认后可登记为家位置"
+            LocationPurpose.Place -> "已取得当前位置（$quality），确认后可保存为活动地点"
         }
     }
 
@@ -312,6 +317,9 @@ internal class NunuloController(
                     latitude = uploaded.exifLatitude.toString(),
                     longitude = uploaded.exifLongitude.toString(),
                     locationSource = "photo_exif",
+                    locationProvider = "exif",
+                    locationCapturedAtMillis = null,
+                    locationAccuracyMeters = null,
                 )
             }
             persistDraft()
