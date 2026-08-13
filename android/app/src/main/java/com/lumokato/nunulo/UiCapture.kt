@@ -69,6 +69,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
     val validation = validateDraft(draft)
     var mapOpen by rememberSaveable { mutableStateOf(false) }
     var candidateOpen by rememberSaveable { mutableStateOf(false) }
+    var groupId by rememberSaveable { mutableStateOf("") }
     var stepName by rememberSaveable { mutableStateOf(CaptureStep.Photos.name) }
     val step = CaptureStep.valueOf(stepName)
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -178,7 +179,9 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
             SectionCard("类别", "没有伙伴时请选择允许的物件类型、作品或角色；不使用自由 tag。") {
                 CatalogSelection("物件类型", controller.discovery.catalog["item_type"].orEmpty(), draft.itemTypeIds) { id -> controller.updateDraft(draft.copy(itemTypeIds = toggleId(draft.itemTypeIds, id))) }
                 CatalogSelection("作品 / IP", controller.discovery.catalog["work"].orEmpty(), draft.workIds) { id -> controller.updateDraft(draft.copy(workIds = toggleId(draft.workIds, id))) }
-                CatalogSelection("角色", controller.discovery.catalog["character"].orEmpty().filter { it.work == null || it.work.id in draft.workIds || draft.workIds.isEmpty() }, draft.characterIds) { id -> controller.updateDraft(draft.copy(characterIds = toggleId(draft.characterIds, id))) }
+                val groups = controller.discovery.catalog["group"].orEmpty().filter { it.work == null || it.work.id in draft.workIds || draft.workIds.isEmpty() }
+                CatalogSelection("乐队 / 组合", groups, listOfNotNull(groupId.takeIf(String::isNotBlank))) { id -> groupId = if (groupId == id) "" else id }
+                CatalogSelection("角色", controller.discovery.catalog["character"].orEmpty().filter { (it.work == null || it.work.id in draft.workIds || draft.workIds.isEmpty()) && (groupId.isBlank() || it.group?.id == groupId) }, draft.characterIds) { id -> controller.updateDraft(draft.copy(characterIds = toggleId(draft.characterIds, id))) }
                 TextButton(onClick = { candidateOpen = true }) { Text("没有合适项？提交候选") }
             }
         }
@@ -331,11 +334,11 @@ private fun CandidateDialog(controller: NunuloController, onDismiss: () -> Unit)
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(listOf("item_type" to "物件类型", "work" to "作品", "character" to "角色")) { option -> FilterChip(selected = type == option.first, onClick = { type = option.first }, label = { Text(option.second) }) }
+                    items(listOf("item_type" to "物件类型", "work" to "作品", "group" to "乐队 / 组合", "character" to "角色")) { option -> FilterChip(selected = type == option.first, onClick = { type = option.first }, label = { Text(option.second) }) }
                 }
                 OutlinedTextField(name, { name = it }, label = { Text("中文候选名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                if (type == "character") {
-                    Text("角色必须选择所属作品", color = NunuloColors.Muted)
+                if (type == "group" || type == "character") {
+                    Text(if (type == "group") "组合必须选择所属作品" else "角色必须选择所属作品", color = NunuloColors.Muted)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(controller.discovery.catalog["work"].orEmpty(), key = { it.id }) { work -> FilterChip(selected = workId == work.id, onClick = { workId = work.id }, label = { Text(work.canonicalName) }) }
                     }
@@ -343,7 +346,7 @@ private fun CandidateDialog(controller: NunuloController, onDismiss: () -> Unit)
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank() && (type != "character" || workId.isNotBlank()), onClick = {
+            TextButton(enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()), onClick = {
                 controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank))
                 onDismiss()
             }) { Text("提交") }

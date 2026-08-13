@@ -43,7 +43,8 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     var albumTitle by rememberSaveable { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            SectionCard("我的 Nunulo", "Web 优化历史整理，Android 优化实时记录；两端仍保留完整低频能力。") {
+            Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+              Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Surface(shape = CircleShape, color = NunuloColors.Soft, modifier = Modifier.size(72.dp).clickable(onClick = onPickAvatar)) {
                         if (user?.avatarUrl != null) RemoteImage(user.avatarUrl, controller.baseUrl, controller.mediaApi, aspect = 1f)
@@ -53,14 +54,18 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                         Text(user?.displayName ?: "Nunulo 成员", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                         Text(user?.username?.let { "@$it" } ?: user?.email.orEmpty(), color = NunuloColors.Muted)
                         if (adminRole != null) Text(if (adminRole == "owner") "站点所有者" else "管理员", color = NunuloColors.Coral, fontWeight = FontWeight.Bold)
-                        Text("存储 ${formatBytes(user?.storageUsageBytes ?: 0)} / ${formatBytes(user?.storageQuotaBytes ?: 0)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                     }
                     TextButton(onClick = controller::logout) { Text("退出") }
                 }
+                val used = user?.storageUsageBytes ?: 0
+                val quota = user?.storageQuotaBytes ?: 0
+                androidx.compose.material3.LinearProgressIndicator(progress = { if (quota > 0) (used.toFloat() / quota).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth(), color = NunuloColors.Coral, trackColor = NunuloColors.Hairline)
+                Text("照片存储 ${formatBytes(used)} / ${formatBytes(quota)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                 if (adminRole != null) {
                     TextButton(onClick = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, "/admin/")) }) { Text("打开 Web 管理台") }
                     Text("Android 只显示身份和入口；目录、举报、活动与存储治理仍在独立 Web Admin。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                 }
+              }
             }
         }
         item {

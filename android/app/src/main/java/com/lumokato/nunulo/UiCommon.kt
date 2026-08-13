@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -173,10 +174,11 @@ internal fun RemoteImage(url: String?, apiBase: String, api: NunuloApi, modifier
 
 @Composable
 internal fun SectionCard(title: String, subtitle: String = "", content: @Composable () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             if (subtitle.isNotBlank()) Text(subtitle, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            HorizontalDivider(color = NunuloColors.Hairline)
             content()
         }
     }

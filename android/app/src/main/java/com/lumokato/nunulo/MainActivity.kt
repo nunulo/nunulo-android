@@ -169,17 +169,20 @@ private fun NunuloApp() {
 
 @Composable
 private fun NunuloTopBar(tab: AppTab, message: String, busy: Boolean, unreadCount: Int, onRefresh: () -> Unit, onNotifications: () -> Unit) {
-    Surface(color = Color.White, shadowElevation = 2.dp) {
+    Surface(color = Color.White) {
         Column(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(tab.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                Surface(color = NunuloColors.Coral, shape = androidx.compose.foundation.shape.RoundedCornerShape(9.dp)) {
+                    Text("N", color = Color.White, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+                Text(tab.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 10.dp).weight(1f))
                 TextButton(onClick = onRefresh, enabled = !busy) { Text(if (busy) "同步中" else "刷新") }
                 Box(Modifier.size(44.dp).clickable(onClick = onNotifications), contentAlignment = Alignment.Center) {
                     Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知")
                     if (unreadCount > 0) Badge(Modifier.align(Alignment.TopEnd)) { Text(unreadCount.coerceAtMost(99).toString()) }
                 }
             }
-            Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
+            if (message.isNotBlank()) Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
         }
     }
 }
@@ -203,7 +206,13 @@ private fun NunuloBottomBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(if (active) icon.first else icon.second, contentDescription = tab.title, tint = if (active) NunuloColors.Coral else NunuloColors.Muted)
+                    if (tab == AppTab.Capture) {
+                        Surface(color = NunuloColors.Coral, shape = androidx.compose.foundation.shape.CircleShape) {
+                            Icon(icon.first, contentDescription = tab.title, tint = Color.White, modifier = Modifier.padding(7.dp))
+                        }
+                    } else {
+                        Icon(if (active) icon.first else icon.second, contentDescription = tab.title, tint = if (active) NunuloColors.Coral else NunuloColors.Muted)
+                    }
                     Spacer(Modifier.height(2.dp))
                     Text(tab.title, style = MaterialTheme.typography.labelSmall, color = if (active) NunuloColors.Coral else NunuloColors.Muted, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)
                 }

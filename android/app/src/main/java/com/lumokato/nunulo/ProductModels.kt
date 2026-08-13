@@ -39,12 +39,14 @@ internal data class CatalogEntityItem(
 )
 
 internal fun CatalogEntityItem.matchesCatalogQuery(query: String): Boolean {
-    val needle = query.trim().lowercase()
+    val needle = query.catalogSearchKey()
     if (needle.isBlank()) return true
-    return sequenceOf(canonicalName, work?.name.orEmpty())
+    return sequenceOf(canonicalName, work?.name.orEmpty(), group?.name.orEmpty())
         .plus(aliases.asSequence())
-        .any { it.lowercase().contains(needle) }
+        .any { it.catalogSearchKey().contains(needle) }
 }
+
+private fun String.catalogSearchKey(): String = lowercase().filter(Char::isLetterOrDigit)
 
 internal data class PartnerItem(
     val id: String,

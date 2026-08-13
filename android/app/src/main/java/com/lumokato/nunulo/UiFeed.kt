@@ -42,8 +42,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun FeedScreen(controller: NunuloController) {
-    val rows = controller.feedItems.chunked(2)
-    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 controller.collection?.let { target ->
@@ -74,32 +73,33 @@ internal fun FeedScreen(controller: NunuloController) {
         if (controller.feedItems.isEmpty()) {
             item { Box(Modifier.padding(horizontal = 12.dp)) { EmptyState("这里还没有内容", "先发布第一条照片记录，或关注作品、角色和伙伴。") } }
         }
-        items(rows, key = { row -> row.joinToString("|") { it.id } }) { row ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { record ->
-                    FeedCard(record, controller, Modifier.weight(1f))
-                }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
-            }
+        items(controller.feedItems, key = CheckinItem::id) { record ->
+            FeedCard(record, controller, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
         }
     }
 }
 
 @Composable
 private fun FeedCard(record: CheckinItem, controller: NunuloController, modifier: Modifier) {
-    Card(modifier, colors = CardDefaults.cardColors(containerColor = Color.White)) {
+    Surface(modifier, color = Color.White, shape = RoundedCornerShape(20.dp)) {
         Column {
             Box(Modifier.fillMaxWidth().clickable { controller.openRecord(record) }) {
-                RemoteImage(record.displayUrl ?: record.thumbUrl, controller.baseUrl, controller.mediaApi, aspect = 0.82f)
+                RemoteImage(record.displayUrl ?: record.thumbUrl, controller.baseUrl, controller.mediaApi, aspect = 1.04f)
                 if (record.photos.size > 1) {
                     Surface(color = Color.Black.copy(alpha = 0.62f), shape = RoundedCornerShape(12.dp), modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)) {
                         Text("${record.photos.size} 图", color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
                     }
                 }
             }
-            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(record.note.ifBlank { record.placeName.ifBlank { "照片记录" } }, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(record.authorName, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(50)) {
+                        Text(record.authorName.take(1), color = NunuloColors.Coral, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+                    }
+                    Text(record.authorName, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp).weight(1f))
+                    Text(shortDate(record.takenAt ?: record.createdAt), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                }
+                Text(record.note.ifBlank { record.placeName.ifBlank { "照片记录" } }, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 val summary = buildList {
                     addAll(record.partners.take(2).map(PartnerItem::name))
                     addAll(record.characters.take(2).map(CatalogRef::name))
@@ -108,7 +108,7 @@ private fun FeedCard(record: CheckinItem, controller: NunuloController, modifier
                 }.distinct().take(3)
                 if (summary.isNotEmpty()) Text(summary.joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(shortDate(record.takenAt ?: record.createdAt), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                    Text(record.placeName, color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.weight(1f))
                     TextButton(onClick = { controller.toggleLike(record) }, contentPadding = PaddingValues(horizontal = 4.dp)) {
                         Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}")
                     }

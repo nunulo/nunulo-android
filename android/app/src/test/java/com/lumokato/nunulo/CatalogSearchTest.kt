@@ -11,6 +11,7 @@ class CatalogSearchTest {
         canonicalName = "丸山彩",
         aliases = listOf("まるやま あや", "Aya Maruyama"),
         work = CatalogRef("bandori", "BanG Dream!"),
+        group = CatalogRef("pastel-palettes", "Pastel＊Palettes"),
     )
 
     @Test fun searchesCanonicalJapaneseRomanizedAliasAndWork() {
@@ -18,6 +19,7 @@ class CatalogSearchTest {
         assertTrue(aya.matchesCatalogQuery("まるやま"))
         assertTrue(aya.matchesCatalogQuery("aya"))
         assertTrue(aya.matchesCatalogQuery("bang dream"))
+        assertTrue(aya.matchesCatalogQuery("pastel palettes"))
         assertFalse(aya.matchesCatalogQuery("Roselia"))
     }
 }

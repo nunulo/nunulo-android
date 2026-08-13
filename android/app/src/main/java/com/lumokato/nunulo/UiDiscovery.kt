@@ -42,8 +42,8 @@ internal fun DiscoveryScreen(controller: NunuloController) {
     var worldMapOpen by rememberSaveable { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            SectionCard("类别发现", "物件类型、作品和角色是正式维度；关注后会参与关注动态。") {
-                listOf("item_type" to "物件类型", "work" to "作品 / IP", "character" to "角色").forEach { (type, title) ->
+            SectionCard("类别发现", "物件类型、作品、组合和角色是正式维度；关注后会参与关注动态。") {
+                listOf("item_type" to "物件类型", "work" to "作品 / IP", "group" to "乐队 / 组合", "character" to "角色").forEach { (type, title) ->
                     Text(title, fontWeight = FontWeight.Bold)
                     val values = controller.discovery.catalog[type].orEmpty()
                     if (values.isEmpty()) Text("暂无正式数据", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
@@ -52,7 +52,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                             Card(colors = CardDefaults.cardColors(containerColor = if (entity.followed) NunuloColors.Soft else Color.White), modifier = Modifier.width(190.dp)) {
                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(entity.canonicalName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (entity.work != null) Text(entity.work.name, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                                    if (entity.work != null) Text(listOfNotNull(entity.work.name, entity.group?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                                     Text("${entity.recordCount} 条记录 · ${if (entity.status == "pending") "待审核" else "正式"}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                                     Row {
                                         TextButton(onClick = { controller.openCatalog(entity) }) { Text("查看") }
@@ -63,7 +63,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                         }
                     }
                 }
-                TextButton(onClick = { candidateOpen = true }) { Text("提交物件类型、作品或角色候选") }
+                TextButton(onClick = { candidateOpen = true }) { Text("没有对应作品、组合或角色？提交候选") }
             }
         }
         item {
@@ -152,11 +152,11 @@ private fun DiscoveryCandidateDialog(controller: NunuloController, onDismiss: ()
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(listOf("item_type" to "物件类型", "work" to "作品", "character" to "角色")) { option -> FilterChip(selected = type == option.first, onClick = { type = option.first }, label = { Text(option.second) }) }
+                    items(listOf("item_type" to "物件类型", "work" to "作品", "group" to "乐队 / 组合", "character" to "角色")) { option -> FilterChip(selected = type == option.first, onClick = { type = option.first }, label = { Text(option.second) }) }
                 }
                 OutlinedTextField(name, { name = it }, label = { Text("中文候选名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                if (type == "character") {
-                    Text("角色只属于一个作品", color = NunuloColors.Muted)
+                if (type == "group" || type == "character") {
+                    Text(if (type == "group") "组合必须属于一个作品" else "角色只属于一个作品", color = NunuloColors.Muted)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(controller.discovery.catalog["work"].orEmpty(), key = { it.id }) { work -> FilterChip(selected = workId == work.id, onClick = { workId = work.id }, label = { Text(work.canonicalName) }) }
                     }
@@ -164,7 +164,7 @@ private fun DiscoveryCandidateDialog(controller: NunuloController, onDismiss: ()
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank() && (type != "character" || workId.isNotBlank()), onClick = {
+            TextButton(enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()), onClick = {
                 controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank))
                 onDismiss()
             }) { Text("提交") }

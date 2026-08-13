@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,12 +49,14 @@ internal fun PartnersScreen(controller: NunuloController) {
                 if (controller.partners.isEmpty()) Text("先登记常拍的娃娃，之后记录时无需重复选择类别。", color = NunuloColors.Muted)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(controller.partners, key = { it.id }) { partner ->
-                        Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.width(220.dp).clickable { controller.selectPartner(partner) }) {
+                        Surface(color = NunuloColors.Background, shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), modifier = Modifier.width(220.dp).clickable { controller.selectPartner(partner) }) {
                             Column {
                                 RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.2f)
-                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                     Text(partner.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(partner.publicCode, color = NunuloColors.Coral, style = MaterialTheme.typography.bodySmall)
+                                    Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(5.dp)) {
+                                        Text(partner.publicCode, color = NunuloColors.Coral, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+                                    }
                                     Text(listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                                     Text("${partner.recordCount} 条记录 · ${visibilityLabel(partner.visibility)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                                 }
@@ -73,7 +76,7 @@ internal fun PartnersScreen(controller: NunuloController) {
             SectionCard("待确认补登记", "跨用户伙伴关系需要相关双方确认，确认后才进入伙伴主页和相遇统计。") {
                 if (controller.partnerRequests.isEmpty()) Text("暂无待确认关系", color = NunuloColors.Muted)
                 controller.partnerRequests.forEach { request ->
-                    Card(colors = CardDefaults.cardColors(containerColor = NunuloColors.Soft), modifier = Modifier.fillMaxWidth()) {
+                    Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("${request.partnerName} · ${request.partnerCode}", fontWeight = FontWeight.Bold)
                             Text("记录作者 ${request.recordAuthorUserId} / 伙伴主人 ${request.partnerOwnerUserId}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
@@ -138,11 +141,14 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
     var characterId by rememberSaveable(initial?.id) { mutableStateOf(initial?.character?.id.orEmpty()) }
     var visibility by rememberSaveable(initial?.id) { mutableStateOf(initial?.visibility ?: "private") }
     var workQuery by rememberSaveable(initial?.id) { mutableStateOf("") }
+    var groupId by rememberSaveable(initial?.id) { mutableStateOf("") }
     var characterQuery by rememberSaveable(initial?.id) { mutableStateOf("") }
     var candidateType by rememberSaveable(initial?.id) { mutableStateOf<String?>(null) }
     val works = controller.discovery.catalog["work"].orEmpty().filter { it.matchesCatalogQuery(workQuery) }
+    val groups = controller.discovery.catalog["group"].orEmpty().filter { it.work == null || workId.isBlank() || it.work.id == workId }
     val characters = controller.discovery.catalog["character"].orEmpty()
         .filter { it.work == null || workId.isBlank() || it.work.id == workId }
+        .filter { groupId.isBlank() || it.group?.id == groupId }
         .filter { it.matchesCatalogQuery(characterQuery) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -164,6 +170,13 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                         items(works, key = { it.id }) { entity -> FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; characterId = "" }, label = { Text(entity.canonicalName) }) }
                     }
                     if (workQuery.isNotBlank() && works.isEmpty()) TextButton(onClick = { candidateType = "work" }) { Text("没有“${workQuery.trim()}”？提交作品候选") }
+                }
+                item {
+                    Text("乐队 / 组合", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        item { FilterChip(selected = groupId.isBlank(), onClick = { groupId = "" }, label = { Text("全部组合") }) }
+                        items(groups, key = { it.id }) { entity -> FilterChip(selected = groupId == entity.id, onClick = { groupId = entity.id }, label = { Text(entity.canonicalName) }) }
+                    }
                 }
                 item {
                     Text("角色", fontWeight = FontWeight.Bold)
