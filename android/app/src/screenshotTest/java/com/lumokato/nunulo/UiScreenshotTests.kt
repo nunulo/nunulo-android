@@ -266,6 +266,7 @@ fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
 @Composable
 fun FootprintContentScreenshot() = ScreenshotFrame(AppTab.Profile) {
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ProfileSectionTabs("footprint", onSelect = {}) }
         item {
             SectionCard("个人足迹", "精确位置只对自己可见。") {
                 ScreenshotMedia("8 个地点 · 42 条记录")

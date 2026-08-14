@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -40,9 +41,10 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     val uriHandler = LocalUriHandler.current
     var homeName by rememberSaveable { mutableStateOf(controller.footprint.home?.name ?: "家") }
     var albumTitle by rememberSaveable { mutableStateOf("") }
+    var section by rememberSaveable { mutableStateOf("footprint") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Surface(color = Color.White, modifier = Modifier.fillMaxWidth()) {
+            Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
               Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ProfileIdentity(
                     user = user,
@@ -62,6 +64,9 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             }
         }
         item {
+            ProfileSectionTabs(section, onSelect = { section = it })
+        }
+        if (section == "footprint") item {
             SectionCard("个人足迹", "家位置与精确坐标只对你本人可见。") {
                 FootprintMap(
                     home = controller.footprint.home,
@@ -82,7 +87,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 CoordinateTag("${controller.footprint.items.size} 个有坐标的记录地点")
             }
         }
-        item {
+        if (section == "collection") item {
             SectionCard("我的记录", "Android 仍保留历史查看和编辑能力。") {
                 if (controller.mineItems.isEmpty()) Text("还没有记录", color = NunuloColors.Muted)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -100,7 +105,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 }
             }
         }
-        item {
+        if (section == "collection") item {
             SectionCard("合集", "合集聚合记录，不承担分类权威。") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(albumTitle, { albumTitle = it }, label = { Text("新合集名称") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -114,7 +119,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 }
             }
         }
-        item {
+        if (section == "community") item {
             SectionCard("成员与关注", "关注成员和类别共同构成关注动态。") {
                 if (controller.people.isEmpty()) Text("暂无其他成员", color = NunuloColors.Muted)
                 controller.people.forEach { person ->
@@ -131,7 +136,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 }
             }
         }
-        item {
+        if (section == "data") item {
             SectionCard("数据与邀请", "导出包含照片资产、记录照片关系、伙伴、类别、活动和地点关系。") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = controller::createExport) { Text("生成数据导出") }
@@ -148,6 +153,15 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun ProfileSectionTabs(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
+    LazyRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        items(listOf("footprint" to "足迹", "collection" to "收藏", "community" to "社区", "data" to "数据")) { option ->
+            FilterChip(selected = selected == option.first, onClick = { onSelect(option.first) }, label = { Text(option.second) })
         }
     }
 }

@@ -169,7 +169,7 @@ internal fun AuthScreen(
                     onClick = {
                         if (registerMode) onRegister(login, displayName, invite, password, accepted) else onLogin(login, password)
                     },
-                    enabled = !busy && login.isNotBlank() && password.isNotBlank() && (!registerMode || displayName.isNotBlank()),
+                    enabled = !busy && login.isNotBlank() && password.isNotBlank() && (!registerMode || (displayName.isNotBlank() && accepted)),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) { Text(if (busy) "处理中" else if (registerMode) "创建账号" else "登录") }
                 if (message.isNotBlank()) {
