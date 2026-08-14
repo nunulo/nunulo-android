@@ -202,10 +202,10 @@ private fun DiscoveryCandidateDialog(controller: NunuloController, onDismiss: ()
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()), onClick = {
-                controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank))
-                onDismiss()
-            }) { Text("提交") }
+            TextButton(
+                enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()) && !controller.catalogCandidateCreating,
+                onClick = { controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank), onSuccess = onDismiss) },
+            ) { Text(if (controller.catalogCandidateCreating) "提交中" else "提交") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
@@ -226,8 +226,7 @@ private fun EventEditorDialog(controller: NunuloController, initial: EventItem?,
     val timeError = eventTimeRangeError(startsAt, endsAt)
     val canSave = name.isNotBlank() && (!offline || placeId.isNotBlank()) && timeError == null && !controller.busy
     val save = {
-        controller.saveEvent(initial?.id, name, type, visibility, placeId.takeIf(String::isNotBlank), seriesId.takeIf(String::isNotBlank), startsAt.takeIf(String::isNotBlank), endsAt.takeIf(String::isNotBlank), description)
-        onDismiss()
+        controller.saveEvent(initial?.id, name, type, visibility, placeId.takeIf(String::isNotBlank), seriesId.takeIf(String::isNotBlank), startsAt.takeIf(String::isNotBlank), endsAt.takeIf(String::isNotBlank), description, onSuccess = onDismiss)
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
@@ -291,7 +290,16 @@ private fun EventEditorDialog(controller: NunuloController, initial: EventItem?,
                                 controller.currentLocation?.let { location ->
                                     CoordinateTag(formatCoordinate(location.latitude, location.longitude))
                                     OutlinedTextField(placeName, { placeName = it }, label = { Text("当前位置名称") }, placeholder = { Text("例如：北京工人体育场北门") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                    Button(enabled = placeName.isNotBlank(), onClick = { controller.createPlace(placeName, location.latitude, location.longitude) }, modifier = Modifier.fillMaxWidth()) { Text("保存为活动地点") }
+                                    Button(
+                                        enabled = placeName.isNotBlank() && !controller.placeCreating,
+                                        onClick = {
+                                            controller.createPlace(placeName, location.latitude, location.longitude) { saved ->
+                                                placeId = saved.id
+                                                placeName = ""
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { Text(if (controller.placeCreating) "保存中" else "保存并选择此地点") }
                                 } ?: Button(onClick = { controller.requestLocation(LocationPurpose.Place) }, modifier = Modifier.fillMaxWidth()) { Text("获取当前位置") }
                                 if (placeId.isBlank()) Text("选择或创建一个地点后才能保存线下活动。", color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall)
                             }

@@ -179,6 +179,12 @@ internal class NunuloController(
         private set
     var partnerRequestRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
+    var catalogCandidateCreating by mutableStateOf(false)
+        private set
+    var placeCreating by mutableStateOf(false)
+        private set
+    var albumCreating by mutableStateOf(false)
+        private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
     var syncError by mutableStateOf<String?>(null)
@@ -598,6 +604,9 @@ internal class NunuloController(
         commentingRecordIds = emptySet()
         reportingRecordIds = emptySet()
         partnerRequestRecordIds = emptySet()
+        catalogCandidateCreating = false
+        placeCreating = false
+        albumCreating = false
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
@@ -888,7 +897,7 @@ internal class NunuloController(
         }
     }
 
-    fun savePartner(id: String?, name: String, itemTypeId: String, workId: String?, characterId: String?, visibility: String) {
+    fun savePartner(id: String?, name: String, itemTypeId: String, workId: String?, characterId: String?, visibility: String, onSuccess: () -> Unit = {}) {
         busy = true
         coroutineScope.launch {
             try {
@@ -896,6 +905,7 @@ internal class NunuloController(
                 partners = listOf(saved) + partners.filterNot { it.id == saved.id }
                 selectedPartner = saved
                 message = if (id == null) "伙伴已登记：${saved.publicCode}" else "伙伴已更新"
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "伙伴保存失败"
             } finally {
@@ -997,7 +1007,9 @@ internal class NunuloController(
         openCollection(RecordCollection(partner.name, partner.publicCode, mapOf("partner_id" to partner.id)))
     }
 
-    fun createCatalogCandidate(type: String, name: String, workId: String?) {
+    fun createCatalogCandidate(type: String, name: String, workId: String?, onSuccess: () -> Unit = {}) {
+        if (catalogCandidateCreating) return
+        catalogCandidateCreating = true
         coroutineScope.launch {
             try {
                 val created = authed { token -> api.createCatalogCandidate(apiBase, token, type, name, workId) }
@@ -1007,8 +1019,11 @@ internal class NunuloController(
                     }
                 )
                 message = "${created.canonicalName} 已作为候选提交"
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "候选提交失败"
+            } finally {
+                catalogCandidateCreating = false
             }
         }
     }
@@ -1033,13 +1048,14 @@ internal class NunuloController(
         openCollection(RecordCollection(entity.canonicalName, "${entity.recordCount} 条记录", mapOf("${entity.entityType}_id" to entity.id)))
     }
 
-    fun saveEvent(id: String?, name: String, type: String, visibility: String, placeId: String?, seriesId: String?, startsAt: String?, endsAt: String?, description: String) {
+    fun saveEvent(id: String?, name: String, type: String, visibility: String, placeId: String?, seriesId: String?, startsAt: String?, endsAt: String?, description: String, onSuccess: () -> Unit = {}) {
         busy = true
         coroutineScope.launch {
             try {
                 val saved = authed { token -> api.saveEvent(apiBase, token, id, name, type, visibility, placeId, seriesId, startsAt, endsAt, description) }
                 discovery = discovery.copy(events = listOf(saved) + discovery.events.filterNot { it.id == saved.id })
                 message = if (id == null) "活动已创建" else "活动已更新"
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "活动保存失败"
             } finally {
@@ -1072,14 +1088,19 @@ internal class NunuloController(
         openCollection(RecordCollection(region.name, "${region.recordCount} 条 · ${region.userCount} 人", mapOf("region" to region.name, "world_only" to "true")))
     }
 
-    fun createPlace(name: String, latitude: Double, longitude: Double) {
+    fun createPlace(name: String, latitude: Double, longitude: Double, onSuccess: (PlaceItem) -> Unit = {}) {
+        if (placeCreating) return
+        placeCreating = true
         coroutineScope.launch {
             try {
                 val place = authed { token -> api.createPlace(apiBase, token, name, latitude, longitude) }
                 places = listOf(place) + places
                 message = "活动地点已保存"
+                onSuccess(place)
             } catch (error: Exception) {
                 message = error.message ?: "地点保存失败"
+            } finally {
+                placeCreating = false
             }
         }
     }
@@ -1132,13 +1153,18 @@ internal class NunuloController(
         }
     }
 
-    fun createAlbum(title: String) {
+    fun createAlbum(title: String, onSuccess: () -> Unit = {}) {
+        if (albumCreating) return
+        albumCreating = true
         coroutineScope.launch {
             try {
                 albums = listOf(authed { token -> api.createAlbum(apiBase, token, title) }) + albums
                 message = "合集已创建"
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "合集创建失败"
+            } finally {
+                albumCreating = false
             }
         }
     }

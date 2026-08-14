@@ -308,8 +308,7 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
         .filter { it.matchesCatalogQuery(characterQuery) }
     val canSave = name.isNotBlank() && itemTypeId.isNotBlank() && !controller.busy
     val save = {
-        controller.savePartner(initial?.id, name, itemTypeId, workId.takeIf(String::isNotBlank), characterId.takeIf(String::isNotBlank), visibility)
-        onDismiss()
+        controller.savePartner(initial?.id, name, itemTypeId, workId.takeIf(String::isNotBlank), characterId.takeIf(String::isNotBlank), visibility, onSuccess = onDismiss)
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
@@ -440,7 +439,12 @@ private fun PartnerCatalogCandidateDialog(controller: NunuloController, type: St
                 OutlinedTextField(name, { name = it }, label = { Text("候选名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank() && (type != "character" || workId != null), onClick = { controller.createCatalogCandidate(type, name, workId); onDismiss() }) { Text("提交") } },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank() && (type != "character" || workId != null) && !controller.catalogCandidateCreating,
+                onClick = { controller.createCatalogCandidate(type, name, workId, onSuccess = onDismiss) },
+            ) { Text(if (controller.catalogCandidateCreating) "提交中" else "提交") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

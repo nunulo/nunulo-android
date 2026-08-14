@@ -122,7 +122,10 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             SectionCard("合集", "合集聚合记录，不承担分类权威。") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(albumTitle, { albumTitle = it }, label = { Text("新合集名称") }, singleLine = true, modifier = Modifier.weight(1f))
-                    Button(enabled = albumTitle.isNotBlank(), onClick = { controller.createAlbum(albumTitle); albumTitle = "" }) { Text("创建") }
+                    Button(
+                        enabled = albumTitle.isNotBlank() && !controller.albumCreating,
+                        onClick = { controller.createAlbum(albumTitle) { albumTitle = "" } },
+                    ) { Text(if (controller.albumCreating) "创建中" else "创建") }
                 }
                 controller.albums.forEach { album ->
                     Row(Modifier.fillMaxWidth()) {

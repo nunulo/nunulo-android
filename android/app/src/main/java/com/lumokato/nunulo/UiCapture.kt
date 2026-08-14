@@ -467,10 +467,10 @@ private fun CandidateDialog(controller: NunuloController, request: CatalogCandid
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()), onClick = {
-                controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank))
-                onDismiss()
-            }) { Text("提交") }
+            TextButton(
+                enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()) && !controller.catalogCandidateCreating,
+                onClick = { controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank), onSuccess = onDismiss) },
+            ) { Text(if (controller.catalogCandidateCreating) "提交中" else "提交") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
