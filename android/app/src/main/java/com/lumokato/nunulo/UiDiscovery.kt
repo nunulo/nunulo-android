@@ -43,6 +43,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
     var candidateOpen by rememberSaveable { mutableStateOf(false) }
     var eventEditor by rememberSaveable { mutableStateOf(false) }
     var editingEventId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingEventId by rememberSaveable { mutableStateOf<String?>(null) }
     var worldMapOpen by rememberSaveable { mutableStateOf(false) }
     var catalogType by rememberSaveable { mutableStateOf("work") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -97,7 +98,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                                 }
                                 if (event.canEdit) {
                                     TextButton(onClick = { editingEventId = event.id; eventEditor = true }) { Text("编辑") }
-                                    TextButton(onClick = { controller.deleteEvent(event) }) { Text("删除", color = NunuloColors.Danger) }
+                                    TextButton(onClick = { deletingEventId = event.id }) { Text("删除", color = NunuloColors.Danger) }
                                 }
                             }
                             if (event.description.isNotBlank()) Text(event.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -150,6 +151,20 @@ internal fun DiscoveryScreen(controller: NunuloController) {
             initial = editingEventId?.let { id -> controller.discovery.events.firstOrNull { it.id == id } },
             onDismiss = { eventEditor = false },
         )
+    }
+    deletingEventId?.let { id ->
+        controller.discovery.events.firstOrNull { it.id == id }?.let { event ->
+            ConfirmActionDialog(
+                title = "删除活动？",
+                body = "“${event.name}”会从活动目录中删除，已经发布的记录和照片仍会保留活动名称快照。",
+                confirmLabel = "删除活动",
+                onConfirm = {
+                    deletingEventId = null
+                    controller.deleteEvent(event)
+                },
+                onDismiss = { deletingEventId = null },
+            )
+        }
     }
 }
 

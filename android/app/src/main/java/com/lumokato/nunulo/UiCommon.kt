@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -298,6 +299,25 @@ internal fun SectionCard(title: String, subtitle: String = "", content: @Composa
 @Composable
 internal fun EmptyState(title: String, subtitle: String) {
     SectionCard(title, subtitle) {}
+}
+
+@Composable
+internal fun ConfirmActionDialog(
+    title: String,
+    body: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body, color = NunuloColors.Muted) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(confirmLabel, color = NunuloColors.Danger, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 @Composable

@@ -430,6 +430,21 @@ fun CaptureConfirmScreenshot() = ScreenshotFrame(AppTab.Capture) {
 }
 
 @PreviewTest
+@Preview(name = "clear_draft_confirmation_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun ClearDraftConfirmationScreenshot() = NunuloTheme {
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        ConfirmActionDialog(
+            title = "清除这条草稿？",
+            body = "草稿里的照片副本、上传状态、伙伴、活动和地点信息都会从本机删除。已经发布的记录不受影响。",
+            confirmLabel = "清除草稿",
+            onConfirm = {},
+            onDismiss = {},
+        )
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_details_360x800", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun CaptureDetailsScreenshot() = ScreenshotFrame(AppTab.Capture) {

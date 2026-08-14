@@ -42,6 +42,8 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     var homeName by rememberSaveable { mutableStateOf(controller.footprint.home?.name ?: "家") }
     var albumTitle by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("footprint") }
+    var homeDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    var blockingPersonId by rememberSaveable { mutableStateOf<Int?>(null) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
@@ -76,7 +78,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 controller.footprint.home?.let { home ->
                     Row {
                         Text("${home.name} · ${formatCoordinate(home.latitude, home.longitude)}", modifier = Modifier.weight(1f))
-                        TextButton(onClick = controller::deleteHome) { Text("删除家位置", color = NunuloColors.Danger) }
+                        TextButton(onClick = { homeDeleteConfirm = true }) { Text("删除家位置", color = NunuloColors.Danger) }
                     }
                 } ?: run {
                     controller.currentLocation?.let { location ->
@@ -130,7 +132,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                                 Text(person.username?.let { "@$it" } ?: person.bio.orEmpty(), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                             }
                             TextButton(onClick = { controller.toggleFollow(person) }) { Text(if (person.following) "已关注" else "关注") }
-                            TextButton(onClick = { controller.blockPerson(person) }) { Text("屏蔽", color = NunuloColors.Danger) }
+                            TextButton(onClick = { blockingPersonId = person.id }) { Text("屏蔽", color = NunuloColors.Danger) }
                         }
                     }
                 }
@@ -153,6 +155,32 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                     }
                 }
             }
+        }
+    }
+    if (homeDeleteConfirm) {
+        ConfirmActionDialog(
+            title = "删除家位置？",
+            body = "家位置名称和精确坐标会从账号中删除，既有照片记录和足迹不会被删除。",
+            confirmLabel = "删除家位置",
+            onConfirm = {
+                homeDeleteConfirm = false
+                controller.deleteHome()
+            },
+            onDismiss = { homeDeleteConfirm = false },
+        )
+    }
+    blockingPersonId?.let { id ->
+        controller.people.firstOrNull { it.id == id }?.let { person ->
+            ConfirmActionDialog(
+                title = "屏蔽 ${person.displayName}？",
+                body = "屏蔽后，你们不会再出现在彼此的动态和成员列表中。这个操作不会删除已经发布的公共记录。",
+                confirmLabel = "确认屏蔽",
+                onConfirm = {
+                    blockingPersonId = null
+                    controller.blockPerson(person)
+                },
+                onDismiss = { blockingPersonId = null },
+            )
         }
     }
 }

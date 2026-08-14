@@ -71,6 +71,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
     var candidateRequest by remember { mutableStateOf<CatalogCandidateRequest?>(null) }
     var groupId by rememberSaveable { mutableStateOf("") }
     var stepName by rememberSaveable { mutableStateOf(CaptureStep.Photos.name) }
+    var clearDraftConfirm by rememberSaveable { mutableStateOf(false) }
     val step = CaptureStep.valueOf(stepName)
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -253,7 +254,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 Text("照片 ${validation.photoCount}/9 · ${if (validation.allPhotosReady) "全部已上传" else "仍有待处理"} · ${if (validation.coordinatesValid) "地点有效" else "地点无效"}")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = controller::saveDraft, enabled = validation.ready && !controller.busy, modifier = Modifier.weight(1f)) { Text(if (draft.editingId == null) "发布记录" else "保存修改") }
-                    TextButton(onClick = controller::clearDraft, enabled = !controller.busy) { Text("清除") }
+                    TextButton(onClick = { clearDraftConfirm = true }, enabled = !controller.busy) { Text("清除草稿", color = NunuloColors.Danger) }
                 }
             }
         }
@@ -271,6 +272,18 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
         }
     }
     candidateRequest?.let { request -> CandidateDialog(controller, request, onDismiss = { candidateRequest = null }) }
+    if (clearDraftConfirm) {
+        ConfirmActionDialog(
+            title = "清除这条草稿？",
+            body = "草稿里的照片副本、上传状态、伙伴、活动和地点信息都会从本机删除。已经发布的记录不受影响。",
+            confirmLabel = "清除草稿",
+            onConfirm = {
+                clearDraftConfirm = false
+                controller.clearDraft()
+            },
+            onDismiss = { clearDraftConfirm = false },
+        )
+    }
 }
 
 internal data class CatalogCandidateRequest(val type: String, val name: String, val workId: String? = null)
