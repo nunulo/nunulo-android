@@ -382,6 +382,7 @@ fun ProfileMemberScreenshot() = ScreenshotFrame(AppTab.Profile) {
             partnerCount = 3,
             placeCount = 8,
             onPickAvatar = {},
+            onEditProfile = {},
             onLogout = {},
             onOpenAdmin = {},
             avatar = { ScreenshotAvatar() },
@@ -400,11 +401,26 @@ fun ProfileOwnerScreenshot() = ScreenshotFrame(AppTab.Profile) {
             partnerCount = 3,
             placeCount = 8,
             onPickAvatar = {},
+            onEditProfile = {},
             onLogout = {},
             onOpenAdmin = {},
             avatar = { ScreenshotAvatar() },
         )
     }
+}
+
+@PreviewTest
+@Preview(name = "profile_editor_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun ProfileEditorScreenshot() = NunuloTheme {
+    ProfileEditorPage(
+        user = screenshotUser(roles = listOf("member")).copy(
+            bio = "带着高松灯棉花娃娃去看每一场 MyGO!!!!! 演出，也记录散场后的城市夜景。",
+        ),
+        saving = false,
+        onClose = {},
+        onSave = { _, _ -> },
+    )
 }
 
 @PreviewTest

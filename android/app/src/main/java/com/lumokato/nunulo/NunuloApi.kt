@@ -27,6 +27,7 @@ internal data class AuthUser(
     val storageUsageBytes: Long,
     val storageQuotaBytes: Long,
     val avatarUrl: String?,
+    val bio: String? = null,
 )
 
 internal data class AuthTokens(val accessToken: String, val refreshToken: String?)
@@ -135,6 +136,13 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
 
     suspend fun me(apiBase: String, token: String): AuthUser = withContext(Dispatchers.IO) {
         parseAuthUser(executeJson(authorized(apiBase, "/api/auth/me", token).get().build()).getJSONObject("user"))
+    }
+
+    suspend fun updateProfile(apiBase: String, token: String, displayName: String, bio: String): AuthUser = withContext(Dispatchers.IO) {
+        val payload = profilePayload(displayName, bio)
+        parseAuthUser(
+            executeJson(authorized(apiBase, "/api/users/me", token).patch(payload.jsonBody()).build()).getJSONObject("user")
+        )
     }
 
     suspend fun listCheckins(
@@ -516,7 +524,7 @@ private fun encodeQuery(value: String): String = URLEncoder.encode(value, Standa
 private fun JSONObject.jsonBody() = toString().toRequestBody("application/json; charset=utf-8".toMediaType())
 private fun emptyBody() = ByteArray(0).toRequestBody(null)
 
-private fun parseAuthUser(json: JSONObject): AuthUser = AuthUser(
+internal fun parseAuthUser(json: JSONObject): AuthUser = AuthUser(
     id = json.getInt("id"),
     displayName = json.getString("display_name"),
     username = json.optionalString("username"),
@@ -525,6 +533,7 @@ private fun parseAuthUser(json: JSONObject): AuthUser = AuthUser(
     storageUsageBytes = json.optLong("storage_usage_bytes"),
     storageQuotaBytes = json.optLong("storage_quota_bytes"),
     avatarUrl = json.optionalString("avatar_url"),
+    bio = json.optionalString("bio"),
 )
 
 private fun parseComment(json: JSONObject) = CommentItem(
@@ -568,6 +577,10 @@ internal fun albumPayload(title: String, description: String, visibility: String
     .put("title", title.trim())
     .put("description", description.trim())
     .put("visibility", visibility.trim().lowercase())
+
+internal fun profilePayload(displayName: String, bio: String) = JSONObject()
+    .put("display_name", displayName.trim())
+    .put("bio", bio.trim())
 
 private fun parseExport(json: JSONObject) = ExportItem(
     id = json.getString("id"),

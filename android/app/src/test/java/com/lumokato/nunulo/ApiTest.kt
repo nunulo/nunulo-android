@@ -70,6 +70,24 @@ class ApiTest {
     }
 
     @Test
+    fun profilePayloadAndParserKeepPublicMemberFields() {
+        val payload = profilePayload("  旅行收藏者  ", "  带着伙伴去看演出  ")
+        val parsed = parseAuthUser(
+            JSONObject()
+                .put("id", 8)
+                .put("display_name", payload.getString("display_name"))
+                .put("username", "nunulo_member")
+                .put("bio", payload.getString("bio"))
+                .put("roles", JSONArray().put("user")),
+        )
+
+        assertEquals(setOf("display_name", "bio"), payload.keys().asSequence().toSet())
+        assertEquals("旅行收藏者", parsed.displayName)
+        assertEquals("带着伙伴去看演出", parsed.bio)
+        assertEquals(listOf("user"), parsed.roles)
+    }
+
+    @Test
     fun parsesMultiPhotoRecordRelationsPermissionsAndInteraction() {
         val record = parseCheckin(
             JSONObject()

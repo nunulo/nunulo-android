@@ -179,6 +179,8 @@ internal class NunuloController(
         private set
     var inviteCreating by mutableStateOf(false)
         private set
+    var profileSaving by mutableStateOf(false)
+        private set
     var screenErrors by mutableStateOf<Map<AppTab, String>>(emptyMap())
         private set
     var notificationsError by mutableStateOf<String?>(null)
@@ -646,6 +648,7 @@ internal class NunuloController(
         albumDeletingId = null
         albumRemovingRecordIds = emptySet()
         followingPersonIds = emptySet()
+        profileSaving = false
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
@@ -1493,6 +1496,28 @@ internal class NunuloController(
                 message = error.message ?: "头像上传失败"
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    fun saveProfile(displayName: String, bio: String, onSuccess: () -> Unit = {}) {
+        if (profileSaving) return
+        profileSaving = true
+        coroutineScope.launch {
+            try {
+                val updated = authed { token -> api.updateProfile(apiBase, token, displayName, bio) }
+                currentUser = updated
+                fun renameAuthor(record: CheckinItem) = if (record.userId == updated.id) record.copy(authorName = updated.displayName) else record
+                feedItems = feedItems.map(::renameAuthor)
+                mineItems = mineItems.map(::renameAuthor)
+                selectedPersonRecords = selectedPersonRecords.map(::renameAuthor)
+                selectedRecord = selectedRecord?.let(::renameAuthor)
+                message = "个人资料已更新"
+                onSuccess()
+            } catch (error: Exception) {
+                message = error.message ?: "个人资料保存失败"
+            } finally {
+                profileSaving = false
             }
         }
     }

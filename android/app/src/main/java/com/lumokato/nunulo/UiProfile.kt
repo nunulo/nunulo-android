@@ -79,6 +79,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     var deletingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
     var communityQuery by rememberSaveable { mutableStateOf("") }
     var communityFollowFilterName by rememberSaveable { mutableStateOf(CommunityFollowFilter.All.name) }
+    var profileEditorOpen by rememberSaveable { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
@@ -89,6 +90,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                     partnerCount = controller.partners.size,
                     placeCount = controller.footprint.items.size,
                     onPickAvatar = onPickAvatar,
+                    onEditProfile = { profileEditorOpen = true },
                     onLogout = controller::logout,
                     onOpenAdmin = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, "/admin/")) },
                     avatar = {
@@ -261,6 +263,16 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             initial = editingAlbumId?.let { id -> controller.albums.firstOrNull { it.id == id } },
             onDismiss = { albumEditorOpen = false },
         )
+    }
+    if (profileEditorOpen) {
+        Dialog(onDismissRequest = { if (!controller.profileSaving) profileEditorOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            ProfileEditorPage(
+                user = controller.currentUser,
+                saving = controller.profileSaving,
+                onClose = { profileEditorOpen = false },
+                onSave = { displayName, bio -> controller.saveProfile(displayName, bio) { profileEditorOpen = false } },
+            )
+        }
     }
     deletingAlbumId?.let { id ->
         controller.albums.firstOrNull { it.id == id }?.let { album ->
@@ -667,6 +679,7 @@ internal fun ProfileIdentity(
     partnerCount: Int,
     placeCount: Int,
     onPickAvatar: () -> Unit,
+    onEditProfile: () -> Unit,
     onLogout: () -> Unit,
     onOpenAdmin: () -> Unit,
     avatar: @Composable () -> Unit,
@@ -695,9 +708,78 @@ internal fun ProfileIdentity(
                 ProfileMetric("地点", placeCount, Modifier.weight(1f))
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onEditProfile) { Text("编辑个人资料") }
+            TextButton(onClick = onPickAvatar) { Text("更换头像") }
+        }
         if (adminRole != null) {
             TextButton(onClick = onOpenAdmin) { Text("打开 Web 管理台") }
             Text("Android 只显示身份和入口；目录、举报、活动与存储治理仍在独立 Web Admin。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+internal fun ProfileEditorPage(
+    user: AuthUser?,
+    saving: Boolean,
+    onClose: () -> Unit,
+    onSave: (String, String) -> Unit,
+) {
+    var displayName by rememberSaveable(user?.id) { mutableStateOf(user?.displayName.orEmpty()) }
+    var bio by rememberSaveable(user?.id) { mutableStateOf(user?.bio.orEmpty()) }
+    val valid = displayName.isNotBlank() && displayName.length <= 120 && bio.length <= 280
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RecordStamp("我", NunuloColors.Coral)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("编辑个人资料", style = MaterialTheme.typography.titleMedium)
+                        Text("成员目录与记录作者信息会使用这里的资料", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(enabled = !saving, onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("让别人认出你", style = MaterialTheme.typography.titleLarge)
+                        Text("显示名用于记录和互动；简介可以写常带出门的伙伴、喜欢的作品或活动。", color = NunuloColors.Muted)
+                    }
+                }
+                item {
+                    SectionCard("公开资料", "用户名不能在这里修改，登录方式不会改变。") {
+                        OutlinedTextField(
+                            value = displayName,
+                            onValueChange = { if (it.length <= 120) displayName = it },
+                            label = { Text("显示名") },
+                            supportingText = { Text("${displayName.length}/120") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = bio,
+                            onValueChange = { if (it.length <= 280) bio = it },
+                            label = { Text("个人简介（可选）") },
+                            supportingText = { Text("${bio.length}/280") },
+                            minLines = 4,
+                            maxLines = 7,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        user?.username?.let { CoordinateTag("用户名 @$it") }
+                    }
+                }
+                item {
+                    Button(enabled = valid && !saving, onClick = { onSave(displayName, bio) }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        Text(if (saving) "正在保存" else "保存个人资料")
+                    }
+                }
+            }
         }
     }
 }
