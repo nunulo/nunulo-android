@@ -73,10 +73,57 @@ internal data class PartnerRequestItem(
     val partnerName: String,
     val partnerCode: String,
     val recordAuthorUserId: Int,
+    val recordAuthorDisplayName: String,
     val partnerOwnerUserId: Int,
+    val partnerOwnerDisplayName: String,
     val authorApproved: Boolean,
     val ownerApproved: Boolean,
 )
+
+internal data class PartnerRequestUiState(
+    val description: String,
+    val statusLabel: String,
+    val needsDecision: Boolean,
+)
+
+internal val PartnerRequestItem.requestKey: String get() = "$checkinId:$partnerId"
+
+internal fun PartnerRequestItem.uiState(viewerUserId: Int?): PartnerRequestUiState {
+    val viewerIsAuthor = viewerUserId != null && viewerUserId == recordAuthorUserId
+    val viewerIsOwner = viewerUserId != null && viewerUserId == partnerOwnerUserId
+    val myApproved = when {
+        viewerIsAuthor -> authorApproved
+        viewerIsOwner -> ownerApproved
+        else -> true
+    }
+    val otherApproved = when {
+        viewerIsAuthor -> ownerApproved
+        viewerIsOwner -> authorApproved
+        else -> authorApproved && ownerApproved
+    }
+    val counterpart = when {
+        viewerIsAuthor -> partnerOwnerDisplayName
+        viewerIsOwner -> recordAuthorDisplayName
+        else -> "相关成员"
+    }
+    val description = when {
+        viewerIsAuthor && !authorApproved -> "$partnerOwnerDisplayName 希望把 $partnerName 补登记到你发布的记录。"
+        viewerIsOwner && !ownerApproved -> "$recordAuthorDisplayName 希望在记录中登记你的伙伴 $partnerName。"
+        viewerIsAuthor -> "你已确认把 $partnerName 登记到这条记录，正在等待 $counterpart 确认。"
+        viewerIsOwner -> "你已确认 $partnerName 出现在这条记录中，正在等待 $counterpart 确认。"
+        else -> "$partnerName 的补登记正在由相关成员确认。"
+    }
+    return PartnerRequestUiState(
+        description = description,
+        statusLabel = when {
+            !viewerIsAuthor && !viewerIsOwner -> "等待相关成员确认"
+            !myApproved -> "需要你确认"
+            !otherApproved -> "等待对方确认"
+            else -> "双方已确认"
+        },
+        needsDecision = (viewerIsAuthor || viewerIsOwner) && !myApproved,
+    )
+}
 
 internal data class PartnerMeetingItem(
     val partner: PartnerItem,
@@ -311,7 +358,9 @@ internal fun parsePartnerRequest(json: JSONObject): PartnerRequestItem = Partner
     partnerName = json.getString("partner_name"),
     partnerCode = json.getString("partner_code"),
     recordAuthorUserId = json.getInt("record_author_user_id"),
+    recordAuthorDisplayName = json.optString("record_author_display_name", "记录作者"),
     partnerOwnerUserId = json.getInt("partner_owner_user_id"),
+    partnerOwnerDisplayName = json.optString("partner_owner_display_name", "伙伴主人"),
     authorApproved = json.optBoolean("author_approved"),
     ownerApproved = json.optBoolean("owner_approved"),
 )

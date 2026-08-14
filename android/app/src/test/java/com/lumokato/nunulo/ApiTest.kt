@@ -121,6 +121,26 @@ class ApiTest {
     }
 
     @Test
+    fun partnerRequestParserKeepsHumanNamesForConfirmationUi() {
+        val request = parsePartnerRequest(
+            JSONObject()
+                .put("checkin_id", "checkin-1")
+                .put("partner_id", "partner-1")
+                .put("partner_name", "高松灯棉花娃娃")
+                .put("partner_code", "N-2026-08-000128")
+                .put("record_author_user_id", 7)
+                .put("record_author_display_name", "旅行收藏者")
+                .put("partner_owner_user_id", 42)
+                .put("partner_owner_display_name", "小灯的主人")
+                .put("author_approved", true)
+                .put("owner_approved", false)
+        )
+
+        assertEquals("旅行收藏者", request.recordAuthorDisplayName)
+        assertEquals("小灯的主人", request.partnerOwnerDisplayName)
+    }
+
+    @Test
     fun checkinPayloadUsesPhotoIdsRelationsAndIndependentVisibility() {
         val payload = checkinPayload(
             UploadDraft(

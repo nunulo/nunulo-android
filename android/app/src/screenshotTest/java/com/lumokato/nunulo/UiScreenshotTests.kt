@@ -207,6 +207,38 @@ fun PartnerLongContentScreenshot() = ScreenshotFrame(AppTab.Partners) {
 }
 
 @PreviewTest
+@Preview(name = "partner_request_states_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerRequestStatesScreenshot() = ScreenshotFrame(AppTab.Partners) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("待确认补登记", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text("只在轮到你决定时显示操作；确认过的申请会清楚说明正在等谁。", color = NunuloColors.Muted)
+            }
+        }
+        item {
+            PartnerRequestCard(
+                request = screenshotPartnerRequest(authorUserId = 7, ownerUserId = 42, authorApproved = true, ownerApproved = false),
+                viewerUserId = 42,
+                resolving = false,
+                onApprove = {},
+                onReject = {},
+            )
+        }
+        item {
+            PartnerRequestCard(
+                request = screenshotPartnerRequest(authorUserId = 42, ownerUserId = 9, authorApproved = true, ownerApproved = false),
+                viewerUserId = 42,
+                resolving = false,
+                onApprove = {},
+                onReject = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "partner_detail_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun PartnerDetailScreenshot() = NunuloTheme {
@@ -688,6 +720,24 @@ private fun screenshotUser(roles: List<String>) = AuthUser(
     storageUsageBytes = 0,
     storageQuotaBytes = 2_147_483_648,
     avatarUrl = null,
+)
+
+private fun screenshotPartnerRequest(
+    authorUserId: Int,
+    ownerUserId: Int,
+    authorApproved: Boolean,
+    ownerApproved: Boolean,
+) = PartnerRequestItem(
+    checkinId = "record-request",
+    partnerId = "partner-request-$ownerUserId",
+    partnerName = "高松灯棉花娃娃",
+    partnerCode = "N-2026-08-000128",
+    recordAuthorUserId = authorUserId,
+    recordAuthorDisplayName = "旅行收藏者",
+    partnerOwnerUserId = ownerUserId,
+    partnerOwnerDisplayName = "小灯的主人",
+    authorApproved = authorApproved,
+    ownerApproved = ownerApproved,
 )
 
 @Composable

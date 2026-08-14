@@ -80,17 +80,13 @@ internal fun PartnersScreen(controller: NunuloController) {
             SectionCard("待确认补登记", "跨用户伙伴关系需要相关双方确认，确认后才进入伙伴主页和相遇统计。") {
                 if (controller.partnerRequests.isEmpty()) Text("暂无待确认关系", color = NunuloColors.Muted)
                 controller.partnerRequests.forEach { request ->
-                    Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("${request.partnerName} · ${request.partnerCode}", fontWeight = FontWeight.Bold)
-                            Text("记录作者 ${request.recordAuthorUserId} / 伙伴主人 ${request.partnerOwnerUserId}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                            Text("作者 ${if (request.authorApproved) "已确认" else "待确认"} · 主人 ${if (request.ownerApproved) "已确认" else "待确认"}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                            Row {
-                                Button(onClick = { controller.resolvePartnerRequest(request, true) }) { Text("确认") }
-                                TextButton(onClick = { controller.resolvePartnerRequest(request, false) }) { Text("拒绝", color = NunuloColors.Danger) }
-                            }
-                        }
-                    }
+                    PartnerRequestCard(
+                        request = request,
+                        viewerUserId = controller.currentUser?.id,
+                        resolving = controller.isResolvingPartnerRequest(request),
+                        onApprove = { controller.resolvePartnerRequest(request, true) },
+                        onReject = { controller.resolvePartnerRequest(request, false) },
+                    )
                 }
             }
         }
@@ -112,6 +108,52 @@ internal fun PartnersScreen(controller: NunuloController) {
             initial = editingId?.let { id -> controller.partners.firstOrNull { it.id == id } },
             onDismiss = { editorOpen = false },
         )
+    }
+}
+
+@Composable
+internal fun PartnerRequestCard(
+    request: PartnerRequestItem,
+    viewerUserId: Int?,
+    resolving: Boolean,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+) {
+    val state = request.uiState(viewerUserId)
+    Surface(
+        color = if (state.needsDecision) NunuloColors.Soft else NunuloColors.Lilac,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(request.partnerName, fontWeight = FontWeight.Bold)
+                    Text(request.partnerCode, color = NunuloColors.MapBlue, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+                CoordinateTag(state.statusLabel)
+            }
+            Text(state.description)
+            androidx.compose.material3.HorizontalDivider(color = NunuloColors.Hairline)
+            PartnerApprovalLine("记录作者", request.recordAuthorDisplayName, request.authorApproved)
+            PartnerApprovalLine("伙伴主人", request.partnerOwnerDisplayName, request.ownerApproved)
+            if (state.needsDecision) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(enabled = !resolving, onClick = onApprove) { Text(if (resolving) "处理中" else "确认登记") }
+                    TextButton(enabled = !resolving, onClick = onReject) { Text("拒绝", color = NunuloColors.Danger) }
+                }
+            } else {
+                Text("无需重复操作；对方确认后会自动更新伙伴主页与相遇记录。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PartnerApprovalLine(role: String, displayName: String, approved: Boolean) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("$role · $displayName", modifier = Modifier.weight(1f), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        Text(if (approved) "已确认" else "待确认", color = if (approved) NunuloColors.Success else NunuloColors.Danger, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
     }
 }
 

@@ -179,6 +179,8 @@ internal class NunuloController(
         private set
     var partnerRequestRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
+    var resolvingPartnerRequestKeys by mutableStateOf<Set<String>>(emptySet())
+        private set
     var catalogCandidateCreating by mutableStateOf(false)
         private set
     var placeCreating by mutableStateOf(false)
@@ -604,6 +606,7 @@ internal class NunuloController(
         commentingRecordIds = emptySet()
         reportingRecordIds = emptySet()
         partnerRequestRecordIds = emptySet()
+        resolvingPartnerRequestKeys = emptySet()
         catalogCandidateCreating = false
         placeCreating = false
         albumCreating = false
@@ -980,6 +983,8 @@ internal class NunuloController(
     }
 
     fun resolvePartnerRequest(request: PartnerRequestItem, approved: Boolean) {
+        if (request.requestKey in resolvingPartnerRequestKeys) return
+        resolvingPartnerRequestKeys = resolvingPartnerRequestKeys + request.requestKey
         coroutineScope.launch {
             try {
                 authed { token -> api.resolvePartnerRequest(apiBase, token, request, approved) }
@@ -987,9 +992,13 @@ internal class NunuloController(
                 message = if (approved) "伙伴补登记已确认" else "伙伴补登记已拒绝"
             } catch (error: Exception) {
                 message = error.message ?: "处理失败"
+            } finally {
+                resolvingPartnerRequestKeys = resolvingPartnerRequestKeys - request.requestKey
             }
         }
     }
+
+    fun isResolvingPartnerRequest(request: PartnerRequestItem): Boolean = request.requestKey in resolvingPartnerRequestKeys
 
     fun searchPartner(code: String) {
         coroutineScope.launch {
