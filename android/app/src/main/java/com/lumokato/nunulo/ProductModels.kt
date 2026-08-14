@@ -458,6 +458,9 @@ internal fun draftFromCheckin(record: CheckinItem): UploadDraft = UploadDraft(
     eventIds = record.events.map(EventItem::id),
 )
 
+internal fun UploadDraft.conflictsWithRecordEdit(recordId: String): Boolean =
+    photos.isNotEmpty() && editingId != recordId
+
 internal fun checkinPayload(draft: UploadDraft, requestId: String?): JSONObject {
     val latitude = draft.latitude.trim().takeIf(String::isNotBlank)?.toDoubleOrNull()
     val longitude = draft.longitude.trim().takeIf(String::isNotBlank)?.toDoubleOrNull()

@@ -181,6 +181,8 @@ internal class NunuloController(
         private set
     var resolvingPartnerRequestKeys by mutableStateOf<Set<String>>(emptySet())
         private set
+    var deletingRecordIds by mutableStateOf<Set<String>>(emptySet())
+        private set
     var catalogCandidateCreating by mutableStateOf(false)
         private set
     var placeCreating by mutableStateOf(false)
@@ -196,7 +198,6 @@ internal class NunuloController(
     var stateReady by mutableStateOf(false)
         private set
     private var draftRequestId by mutableStateOf(UUID.randomUUID().toString())
-    private var pendingDeleteId by mutableStateOf("")
     private val recordDetailRequests = DetailRequestGate()
     private val partnerDetailRequests = DetailRequestGate()
     private val collectionRequests = DetailRequestGate()
@@ -607,6 +608,7 @@ internal class NunuloController(
         reportingRecordIds = emptySet()
         partnerRequestRecordIds = emptySet()
         resolvingPartnerRequestKeys = emptySet()
+        deletingRecordIds = emptySet()
         catalogCandidateCreating = false
         placeCreating = false
         albumCreating = false
@@ -730,7 +732,6 @@ internal class NunuloController(
     fun closeRecord() {
         selectedRecord = null
         clearRecordDetailState()
-        pendingDeleteId = ""
     }
 
     private fun clearRecordDetailState() {
@@ -742,7 +743,14 @@ internal class NunuloController(
         commentsError = null
     }
 
-    fun editRecord(record: CheckinItem) {
+    fun hasConflictingDraft(record: CheckinItem): Boolean = draft.conflictsWithRecordEdit(record.id)
+
+    fun editRecord(record: CheckinItem, replaceConflictingDraft: Boolean = false) {
+        if (hasConflictingDraft(record) && !replaceConflictingDraft) {
+            message = "已有未完成草稿，请先确认是否替换"
+            return
+        }
+        if (hasConflictingDraft(record)) draft.photos.forEach { deleteCachedMedia(context, it.localUri) }
         draft = draftFromCheckin(record)
         draftRequestId = UUID.randomUUID().toString()
         selectedRecord = null
@@ -783,11 +791,8 @@ internal class NunuloController(
     }
 
     fun deleteRecord(record: CheckinItem) {
-        if (pendingDeleteId != record.id) {
-            pendingDeleteId = record.id
-            message = "再次点击删除记录"
-            return
-        }
+        if (record.id in deletingRecordIds) return
+        deletingRecordIds = deletingRecordIds + record.id
         busy = true
         coroutineScope.launch {
             try {
@@ -796,17 +801,17 @@ internal class NunuloController(
                 mineItems = mineItems.filterNot { it.id == record.id }
                 selectedRecord = null
                 clearRecordDetailState()
-                pendingDeleteId = ""
                 message = "记录已删除；照片资产仍保留在你的媒体库"
             } catch (error: Exception) {
                 message = error.message ?: "删除失败"
             } finally {
+                deletingRecordIds = deletingRecordIds - record.id
                 busy = false
             }
         }
     }
 
-    fun isDeletePending(record: CheckinItem): Boolean = pendingDeleteId == record.id
+    fun isDeletingRecord(record: CheckinItem): Boolean = record.id in deletingRecordIds
 
     private fun updateRecordEverywhere(updated: CheckinItem) {
         feedItems = feedItems.map { if (it.id == updated.id) updated else it }

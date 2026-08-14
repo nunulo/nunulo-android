@@ -190,6 +190,8 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
     var comment by rememberSaveable(record.id) { mutableStateOf("") }
     var reportReason by rememberSaveable(record.id) { mutableStateOf("") }
     var reportOpen by rememberSaveable(record.id) { mutableStateOf(false) }
+    var editDraftConflictOpen by rememberSaveable(record.id) { mutableStateOf(false) }
+    var deleteConfirmOpen by rememberSaveable(record.id) { mutableStateOf(false) }
     var partnerCode by rememberSaveable(record.id) { mutableStateOf("") }
     if (reportOpen) {
         AlertDialog(
@@ -205,6 +207,27 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 }) { Text(if (controller.isReporting(record)) "提交中" else "提交", color = NunuloColors.Danger) }
             },
             dismissButton = { TextButton(onClick = { reportOpen = false }) { Text("取消") } },
+        )
+        return
+    }
+    if (editDraftConflictOpen) {
+        EditDraftConflictDialog(
+            photoCount = controller.draft.photos.size,
+            onConfirm = {
+                editDraftConflictOpen = false
+                controller.editRecord(record, replaceConflictingDraft = true)
+            },
+            onDismiss = { editDraftConflictOpen = false },
+        )
+        return
+    }
+    if (deleteConfirmOpen) {
+        RecordDeleteConfirmationDialog(
+            onConfirm = {
+                deleteConfirmOpen = false
+                controller.deleteRecord(record)
+            },
+            onDismiss = { deleteConfirmOpen = false },
         )
         return
     }
@@ -353,8 +376,14 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 if (record.canEdit) {
                     item {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            TextButton(onClick = { controller.deleteRecord(record) }) { Text(if (controller.isDeletePending(record)) "确认删除" else "删除", color = NunuloColors.Danger) }
-                            Button(onClick = { controller.editRecord(record) }) { Text("编辑记录") }
+                            TextButton(
+                                enabled = !controller.isDeletingRecord(record),
+                                onClick = { deleteConfirmOpen = true },
+                            ) { Text(if (controller.isDeletingRecord(record)) "删除中" else "删除", color = NunuloColors.Danger) }
+                            Button(onClick = {
+                                if (controller.hasConflictingDraft(record)) editDraftConflictOpen = true
+                                else controller.editRecord(record)
+                            }) { Text("编辑记录") }
                         }
                     }
                 }
@@ -362,6 +391,28 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
             }
         }
     }
+}
+
+@Composable
+internal fun EditDraftConflictDialog(photoCount: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ConfirmActionDialog(
+        title = "替换当前草稿？",
+        body = "你还有一条包含 $photoCount 张照片的未完成草稿。继续编辑会移除这条本机草稿和它的照片副本；已经发布或上传的照片资产不会删除。",
+        confirmLabel = "替换并编辑",
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
+}
+
+@Composable
+internal fun RecordDeleteConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ConfirmActionDialog(
+        title = "删除这条记录？",
+        body = "记录会从动态、足迹和相关聚合中移除，评论与伙伴关系也不再显示。照片资产仍保留在你的个人媒体库中。",
+        confirmLabel = "删除记录",
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable

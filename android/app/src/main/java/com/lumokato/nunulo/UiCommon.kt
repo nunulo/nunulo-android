@@ -348,7 +348,7 @@ internal fun ConfirmActionDialog(
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(confirmLabel, color = NunuloColors.Danger, fontWeight = FontWeight.Bold) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = NunuloColors.MapBlue) } },
     )
 }
 

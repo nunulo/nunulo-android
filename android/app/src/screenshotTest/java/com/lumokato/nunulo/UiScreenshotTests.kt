@@ -657,6 +657,24 @@ fun ClearDraftConfirmationScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "edit_draft_conflict_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun EditDraftConflictScreenshot() = NunuloTheme {
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        EditDraftConflictDialog(photoCount = 3, onConfirm = {}, onDismiss = {})
+    }
+}
+
+@PreviewTest
+@Preview(name = "record_delete_confirmation_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun RecordDeleteConfirmationScreenshot() = NunuloTheme {
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        RecordDeleteConfirmationDialog(onConfirm = {}, onDismiss = {})
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_details_360x800", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun CaptureDetailsScreenshot() = ScreenshotFrame(AppTab.Capture) {
