@@ -31,6 +31,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -299,6 +300,37 @@ internal fun SectionCard(title: String, subtitle: String = "", content: @Composa
 @Composable
 internal fun EmptyState(title: String, subtitle: String) {
     SectionCard(title, subtitle) {}
+}
+
+@Composable
+internal fun DetailLoadState(
+    title: String,
+    detail: String,
+    loading: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = if (error == null) NunuloColors.Lilac else NunuloColors.Soft,
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(title, fontWeight = FontWeight.Bold)
+            if (loading) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = NunuloColors.MapBlue,
+                    trackColor = NunuloColors.Hairline,
+                )
+            }
+            Text(error ?: detail, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            if (error != null) {
+                TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) { Text("重新加载") }
+            }
+        }
+    }
 }
 
 @Composable

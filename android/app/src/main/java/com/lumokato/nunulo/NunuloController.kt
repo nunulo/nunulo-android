@@ -23,6 +23,19 @@ internal data class RecordCollection(
     val checkinIds: List<String> = emptyList(),
 )
 
+internal class DetailRequestGate {
+    private var version = 0
+
+    fun next(): Int = ++version
+
+    fun invalidate() {
+        version += 1
+    }
+
+    fun isCurrent(requestVersion: Int, selectedId: String?, targetId: String): Boolean =
+        requestVersion == version && selectedId == targetId
+}
+
 private data class LoadedState(
     val user: AuthUser,
     val feed: List<CheckinItem>,
@@ -90,11 +103,27 @@ internal class NunuloController(
         private set
     var selectedRecord by mutableStateOf<CheckinItem?>(null)
         private set
+    var recordDetailLoading by mutableStateOf(false)
+        private set
+    var recordDetailError by mutableStateOf<String?>(null)
+        private set
     var comments by mutableStateOf<List<CommentItem>>(emptyList())
+        private set
+    var commentsLoading by mutableStateOf(false)
+        private set
+    var commentsError by mutableStateOf<String?>(null)
         private set
     var selectedPartner by mutableStateOf<PartnerItem?>(null)
         private set
+    var partnerDetailLoading by mutableStateOf(false)
+        private set
+    var partnerDetailError by mutableStateOf<String?>(null)
+        private set
     var selectedPartnerMeetings by mutableStateOf<List<PartnerMeetingItem>>(emptyList())
+        private set
+    var partnerMeetingsLoading by mutableStateOf(false)
+        private set
+    var partnerMeetingsError by mutableStateOf<String?>(null)
         private set
     var collection by mutableStateOf<RecordCollection?>(null)
         private set
@@ -117,6 +146,8 @@ internal class NunuloController(
         private set
     private var draftRequestId by mutableStateOf(UUID.randomUUID().toString())
     private var pendingDeleteId by mutableStateOf("")
+    private val recordDetailRequests = DetailRequestGate()
+    private val partnerDetailRequests = DetailRequestGate()
 
     internal val mediaApi: NunuloApi get() = api
     internal val baseUrl: String get() = apiBase
@@ -431,7 +462,9 @@ internal class NunuloController(
         places = emptyList()
         eventSeries = emptyList()
         selectedRecord = null
+        clearRecordDetailState()
         selectedPartner = null
+        clearPartnerDetailState()
         collection = null
         syncError = null
         stateReady = false
@@ -484,21 +517,58 @@ internal class NunuloController(
 
     fun openRecord(record: CheckinItem) {
         selectedRecord = record
+        comments = emptyList()
+        loadRecordDetails(record)
+    }
+
+    fun reloadRecordDetails() {
+        selectedRecord?.let(::loadRecordDetails)
+    }
+
+    private fun loadRecordDetails(record: CheckinItem) {
+        val requestVersion = recordDetailRequests.next()
+        recordDetailLoading = true
+        recordDetailError = null
+        commentsLoading = true
+        commentsError = null
         coroutineScope.launch {
-            selectedRecord = runCatching { authed { token -> api.getCheckin(apiBase, token, record.id) } }.getOrDefault(record)
-            comments = runCatching { authed { token -> api.listComments(apiBase, token, record.id) } }.getOrDefault(emptyList())
+            val detailResult = runCatching { authed { token -> api.getCheckin(apiBase, token, record.id) } }
+            if (!recordDetailRequests.isCurrent(requestVersion, selectedRecord?.id, record.id)) return@launch
+            detailResult
+                .onSuccess { selectedRecord = it }
+                .onFailure { recordDetailError = it.message?.takeIf(String::isNotBlank) ?: "记录完整内容加载失败" }
+            recordDetailLoading = false
+        }
+        coroutineScope.launch {
+            val commentsResult = runCatching { authed { token -> api.listComments(apiBase, token, record.id) } }
+            if (!recordDetailRequests.isCurrent(requestVersion, selectedRecord?.id, record.id)) return@launch
+            commentsResult
+                .onSuccess { comments = it }
+                .onFailure { commentsError = it.message?.takeIf(String::isNotBlank) ?: "评论加载失败" }
+            commentsLoading = false
         }
     }
 
     fun closeRecord() {
         selectedRecord = null
+        clearRecordDetailState()
         pendingDeleteId = ""
+    }
+
+    private fun clearRecordDetailState() {
+        recordDetailRequests.invalidate()
+        comments = emptyList()
+        recordDetailLoading = false
+        recordDetailError = null
+        commentsLoading = false
+        commentsError = null
     }
 
     fun editRecord(record: CheckinItem) {
         draft = draftFromCheckin(record)
         draftRequestId = UUID.randomUUID().toString()
         selectedRecord = null
+        clearRecordDetailState()
         selectTab(AppTab.Capture)
         persistDraft()
     }
@@ -520,6 +590,7 @@ internal class NunuloController(
                 draft = UploadDraft()
                 draftRequestId = UUID.randomUUID().toString()
                 mineItems = listOf(saved) + mineItems.filterNot { it.id == saved.id }
+                clearRecordDetailState()
                 selectedRecord = saved
                 collection = null
                 selectTab(AppTab.Feed)
@@ -546,6 +617,7 @@ internal class NunuloController(
                 feedItems = feedItems.filterNot { it.id == record.id }
                 mineItems = mineItems.filterNot { it.id == record.id }
                 selectedRecord = null
+                clearRecordDetailState()
                 pendingDeleteId = ""
                 message = "记录已删除；照片资产仍保留在你的媒体库"
             } catch (error: Exception) {
@@ -647,7 +719,7 @@ internal class NunuloController(
                 authed { token -> api.deletePartner(apiBase, token, partner.id) }
                 partners = partners.filterNot { it.id == partner.id }
                 selectedPartner = null
-                selectedPartnerMeetings = emptyList()
+                clearPartnerDetailState()
                 message = "伙伴已删除，历史记录保留名称快照"
             } catch (error: Exception) {
                 message = error.message ?: "伙伴删除失败"
@@ -659,15 +731,50 @@ internal class NunuloController(
 
     fun selectPartner(partner: PartnerItem) {
         selectedPartner = partner
+        selectedPartnerMeetings = emptyList()
+        loadPartnerDetails(partner)
+    }
+
+    fun reloadPartnerDetails() {
+        selectedPartner?.let(::loadPartnerDetails)
+    }
+
+    private fun loadPartnerDetails(partner: PartnerItem) {
+        val requestVersion = partnerDetailRequests.next()
+        partnerDetailLoading = true
+        partnerDetailError = null
+        partnerMeetingsLoading = true
+        partnerMeetingsError = null
         coroutineScope.launch {
-            selectedPartner = runCatching { authed { token -> api.getPartner(apiBase, token, partner.id) } }.getOrDefault(partner)
-            selectedPartnerMeetings = runCatching { authed { token -> api.listPartnerMeetings(apiBase, token, partner.id) } }.getOrDefault(emptyList())
+            val detailResult = runCatching { authed { token -> api.getPartner(apiBase, token, partner.id) } }
+            if (!partnerDetailRequests.isCurrent(requestVersion, selectedPartner?.id, partner.id)) return@launch
+            detailResult
+                .onSuccess { selectedPartner = it }
+                .onFailure { partnerDetailError = it.message?.takeIf(String::isNotBlank) ?: "伙伴完整资料加载失败" }
+            partnerDetailLoading = false
+        }
+        coroutineScope.launch {
+            val meetingsResult = runCatching { authed { token -> api.listPartnerMeetings(apiBase, token, partner.id) } }
+            if (!partnerDetailRequests.isCurrent(requestVersion, selectedPartner?.id, partner.id)) return@launch
+            meetingsResult
+                .onSuccess { selectedPartnerMeetings = it }
+                .onFailure { partnerMeetingsError = it.message?.takeIf(String::isNotBlank) ?: "相遇记录加载失败" }
+            partnerMeetingsLoading = false
         }
     }
 
     fun clearSelectedPartner() {
         selectedPartner = null
+        clearPartnerDetailState()
+    }
+
+    private fun clearPartnerDetailState() {
+        partnerDetailRequests.invalidate()
         selectedPartnerMeetings = emptyList()
+        partnerDetailLoading = false
+        partnerDetailError = null
+        partnerMeetingsLoading = false
+        partnerMeetingsError = null
     }
 
     fun resolvePartnerRequest(request: PartnerRequestItem, approved: Boolean) {

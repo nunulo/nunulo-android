@@ -183,6 +183,81 @@ fun PartnerDetailScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "partner_detail_loading_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerDetailLoadingScreenshot() = NunuloTheme {
+    PartnerDetailPage(
+        partner = screenshotPartner(),
+        meetings = emptyList(),
+        detailLoading = true,
+        meetingsLoading = true,
+        onClose = {},
+        onOpenRecords = {},
+        onEdit = {},
+        onDelete = {},
+        onSelectMeeting = {},
+        image = { ScreenshotMedia("伙伴摘要封面") },
+    )
+}
+
+@PreviewTest
+@Preview(name = "partner_detail_failure_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerDetailFailureScreenshot() = NunuloTheme {
+    PartnerDetailPage(
+        partner = screenshotPartner(),
+        meetings = emptyList(),
+        detailError = "网络连接已中断，完整资料暂时不可用。",
+        meetingsError = "相遇记录暂时无法读取。",
+        onRetry = {},
+        onClose = {},
+        onOpenRecords = {},
+        onEdit = {},
+        onDelete = {},
+        onSelectMeeting = {},
+        image = { ScreenshotMedia("伙伴摘要封面") },
+    )
+}
+
+@PreviewTest
+@Preview(name = "record_comments_loading_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun RecordCommentsLoadingScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("记录回应", "完整记录仍可查看，评论独立加载。") {
+                DetailLoadState(
+                    title = "正在加载评论",
+                    detail = "评论加载完成前不会把它误显示成空列表。",
+                    loading = true,
+                    error = null,
+                    onRetry = {},
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "record_comments_failure_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun RecordCommentsFailureScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("记录回应", "完整记录仍可查看，评论独立加载。") {
+                DetailLoadState(
+                    title = "评论没有加载成功",
+                    detail = "现有记录内容仍可继续查看。",
+                    loading = false,
+                    error = "当前网络不可用，请稍后重试。",
+                    onRetry = {},
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "profile_member_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun ProfileMemberScreenshot() = ScreenshotFrame(AppTab.Profile) {

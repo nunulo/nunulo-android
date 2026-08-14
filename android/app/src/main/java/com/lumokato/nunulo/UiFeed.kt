@@ -211,6 +211,17 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                     contentPadding = PaddingValues(12.dp),
                     modifier = Modifier.weight(1f).widthIn(max = 720.dp).fillMaxWidth().align(Alignment.CenterHorizontally),
                 ) {
+                if (controller.recordDetailLoading || controller.recordDetailError != null) {
+                    item {
+                        DetailLoadState(
+                            title = if (controller.recordDetailLoading) "正在加载完整内容" else "完整内容没有加载成功",
+                            detail = "先显示动态里的摘要，照片与关系加载完成后会自动更新。",
+                            loading = controller.recordDetailLoading,
+                            error = controller.recordDetailError,
+                            onRetry = controller::reloadRecordDetails,
+                        )
+                    }
+                }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(record.photos, key = { it.id }) { photo ->
@@ -283,10 +294,33 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                     }
                 }
                 item { Text("评论", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 4.dp)) }
-                items(controller.comments, key = { it.id }) { item ->
-                    Column(Modifier.fillMaxWidth().background(NunuloColors.Paper, RoundedCornerShape(18.dp)).padding(12.dp)) {
-                        Text(item.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                        Text(item.body)
+                when {
+                    controller.commentsLoading -> item {
+                        DetailLoadState(
+                            title = "正在加载评论",
+                            detail = "评论加载完成前不会把它误显示成空列表。",
+                            loading = true,
+                            error = null,
+                            onRetry = controller::reloadRecordDetails,
+                        )
+                    }
+                    controller.commentsError != null -> item {
+                        DetailLoadState(
+                            title = "评论没有加载成功",
+                            detail = "现有记录内容仍可继续查看。",
+                            loading = false,
+                            error = controller.commentsError,
+                            onRetry = controller::reloadRecordDetails,
+                        )
+                    }
+                    controller.comments.isEmpty() -> item {
+                        Text("还没有评论，写下第一条回应吧。", color = NunuloColors.Muted, modifier = Modifier.padding(horizontal = 4.dp))
+                    }
+                    else -> items(controller.comments, key = { it.id }) { item ->
+                        Column(Modifier.fillMaxWidth().background(NunuloColors.Paper, RoundedCornerShape(18.dp)).padding(12.dp)) {
+                            Text(item.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            Text(item.body)
+                        }
                     }
                 }
                 item {

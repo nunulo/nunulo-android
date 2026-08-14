@@ -110,6 +110,11 @@ private fun PartnerDetailDialog(controller: NunuloController, partner: PartnerIt
         PartnerDetailPage(
             partner = partner,
             meetings = controller.selectedPartnerMeetings,
+            detailLoading = controller.partnerDetailLoading,
+            detailError = controller.partnerDetailError,
+            meetingsLoading = controller.partnerMeetingsLoading,
+            meetingsError = controller.partnerMeetingsError,
+            onRetry = controller::reloadPartnerDetails,
             onClose = controller::clearSelectedPartner,
             onOpenRecords = { controller.openPartnerRecords(partner) },
             onEdit = onEdit,
@@ -127,6 +132,11 @@ private fun PartnerDetailDialog(controller: NunuloController, partner: PartnerIt
 internal fun PartnerDetailPage(
     partner: PartnerItem,
     meetings: List<PartnerMeetingItem>,
+    detailLoading: Boolean = false,
+    detailError: String? = null,
+    meetingsLoading: Boolean = false,
+    meetingsError: String? = null,
+    onRetry: () -> Unit = {},
     onClose: () -> Unit,
     onOpenRecords: () -> Unit,
     onEdit: () -> Unit,
@@ -155,6 +165,17 @@ internal fun PartnerDetailPage(
                 contentPadding = PaddingValues(12.dp),
                 modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(androidx.compose.ui.Alignment.CenterHorizontally),
             ) {
+                if (detailLoading || detailError != null) {
+                    item {
+                        DetailLoadState(
+                            title = if (detailLoading) "正在加载完整资料" else "完整资料没有加载成功",
+                            detail = "先显示伙伴列表里的摘要，完整资料加载后会自动更新。",
+                            loading = detailLoading,
+                            error = detailError,
+                            onRetry = onRetry,
+                        )
+                    }
+                }
                 item {
                     Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), shadowElevation = 2.dp) {
                         Column {
@@ -172,10 +193,24 @@ internal fun PartnerDetailPage(
                 }
                 item {
                     SectionCard("见过的伙伴", "只有双方确认过的合照关系才会出现在这里。") {
-                        if (meetings.isEmpty()) {
-                            Text("还没有确认过的相遇记录。以后在合照里补登记伙伴，就会慢慢形成同行关系。", color = NunuloColors.Muted)
+                        when {
+                            meetingsLoading -> DetailLoadState(
+                                title = "正在加载相遇记录",
+                                detail = "加载完成后才会判断这里是否为空。",
+                                loading = true,
+                                error = null,
+                                onRetry = onRetry,
+                            )
+                            meetingsError != null -> DetailLoadState(
+                                title = "相遇记录没有加载成功",
+                                detail = "伙伴资料仍可继续查看。",
+                                loading = false,
+                                error = meetingsError,
+                                onRetry = onRetry,
+                            )
+                            meetings.isEmpty() -> Text("还没有确认过的相遇记录。以后在合照里补登记伙伴，就会慢慢形成同行关系。", color = NunuloColors.Muted)
                         }
-                        meetings.forEach { meeting ->
+                        if (!meetingsLoading && meetingsError == null) meetings.forEach { meeting ->
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = Color.White),
                                 modifier = Modifier.fillMaxWidth().clickable { onSelectMeeting(meeting.partner) },
