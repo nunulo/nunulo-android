@@ -40,6 +40,7 @@ internal fun DiscoveryScreen(controller: NunuloController) {
     var eventEditor by rememberSaveable { mutableStateOf(false) }
     var editingEventId by rememberSaveable { mutableStateOf<String?>(null) }
     var worldMapOpen by rememberSaveable { mutableStateOf(false) }
+    var catalogType by rememberSaveable { mutableStateOf("work") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -49,21 +50,22 @@ internal fun DiscoveryScreen(controller: NunuloController) {
         }
         item {
             SectionCard("正在被记录", "关注作品、组合或角色后，它们会进入你的关注动态。") {
-                listOf("item_type" to "物件类型", "work" to "作品 / IP", "group" to "乐队 / 组合", "character" to "角色").forEach { (type, title) ->
-                    Text(title, fontWeight = FontWeight.Bold)
-                    val values = controller.discovery.catalog[type].orEmpty()
-                    if (values.isEmpty()) Text("暂无正式数据", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(values, key = { it.id }) { entity ->
-                            Card(colors = CardDefaults.cardColors(containerColor = if (entity.followed) NunuloColors.Soft else Color.White), modifier = Modifier.width(190.dp)) {
-                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(entity.canonicalName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    if (entity.work != null) Text(listOfNotNull(entity.work.name, entity.group?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                                    Text("${entity.recordCount} 条记录 · ${if (entity.status == "pending") "待审核" else "正式"}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                                    Row {
-                                        TextButton(onClick = { controller.openCatalog(entity) }) { Text("查看") }
-                                        TextButton(onClick = { controller.toggleCatalogFollow(entity) }) { Text(if (entity.followed) "取消关注" else "关注") }
-                                    }
+                val catalogTypes = listOf("item_type" to "物件", "work" to "作品", "group" to "组合", "character" to "角色")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(catalogTypes) { option -> FilterChip(selected = catalogType == option.first, onClick = { catalogType = option.first }, label = { Text(option.second) }) }
+                }
+                val values = controller.discovery.catalog[catalogType].orEmpty()
+                if (values.isEmpty()) Text("这一类还没有正式内容", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(values, key = { it.id }) { entity ->
+                        Card(colors = CardDefaults.cardColors(containerColor = if (entity.followed) NunuloColors.Soft else NunuloColors.Paper), modifier = Modifier.width(190.dp)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(entity.canonicalName, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (entity.work != null) Text(listOfNotNull(entity.work.name, entity.group?.name).joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                                CoordinateTag("${entity.recordCount} 条记录")
+                                Row {
+                                    TextButton(onClick = { controller.openCatalog(entity) }) { Text("查看") }
+                                    TextButton(onClick = { controller.toggleCatalogFollow(entity) }) { Text(if (entity.followed) "已关注" else "关注") }
                                 }
                             }
                         }

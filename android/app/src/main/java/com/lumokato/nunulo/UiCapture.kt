@@ -1,5 +1,7 @@
 package com.lumokato.nunulo
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -55,6 +57,10 @@ import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.MarkerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 internal enum class CaptureStep(val title: String, val hint: String) {
     Photos("照片", "先选好这次记录的 1–9 张照片"),
@@ -118,7 +124,7 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
         }
         if (step == CaptureStep.Details) item {
             SectionCard("拍摄时间与说明", "服务端照片元数据优先填入时间；可在历史补录时修正。") {
-                OutlinedTextField(draft.takenAt, { controller.updateDraft(draft.copy(takenAt = it)) }, label = { Text("拍摄时间（ISO，可留空）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                CaptureDateTimeField(draft.takenAt, onChange = { controller.updateDraft(draft.copy(takenAt = it)) })
                 OutlinedTextField(draft.note, { controller.updateDraft(draft.copy(note = it)) }, label = { Text("这次记录") }, minLines = 3, modifier = Modifier.fillMaxWidth())
             }
         }
@@ -268,6 +274,44 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
 }
 
 internal data class CatalogCandidateRequest(val type: String, val name: String, val workId: String? = null)
+
+@Composable
+private fun CaptureDateTimeField(value: String, onChange: (String) -> Unit) {
+    val context = LocalContext.current
+    val zone = remember { ZoneId.systemDefault() }
+    val current = remember(value) {
+        runCatching { OffsetDateTime.parse(value).atZoneSameInstant(zone) }
+            .recoverCatching { Instant.parse(value).atZone(zone) }
+            .getOrElse { java.time.ZonedDateTime.now(zone) }
+    }
+    val display = value.takeIf(String::isNotBlank)?.let {
+        runCatching { current.format(DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")) }.getOrNull()
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("拍摄时间", fontWeight = FontWeight.Bold)
+        Text(display ?: "使用照片时间；也可以手动选择", color = NunuloColors.Muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        TimePickerDialog(
+                            context,
+                            { _, hour, minute -> onChange(java.time.ZonedDateTime.of(year, month + 1, day, hour, minute, 0, 0, zone).toOffsetDateTime().toString()) },
+                            current.hour,
+                            current.minute,
+                            true,
+                        ).show()
+                    },
+                    current.year,
+                    current.monthValue - 1,
+                    current.dayOfMonth,
+                ).show()
+            }) { Text(if (value.isBlank()) "选择日期与时间" else "修改时间") }
+            if (value.isNotBlank()) TextButton(onClick = { onChange("") }) { Text("使用照片时间") }
+        }
+    }
+}
 
 @Composable
 internal fun CaptureStepIndicator(step: CaptureStep) {

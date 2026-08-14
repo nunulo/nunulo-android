@@ -324,6 +324,37 @@ fun CaptureConfirmScreenshot() = ScreenshotFrame(AppTab.Capture) {
 }
 
 @PreviewTest
+@Preview(name = "capture_details_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun CaptureDetailsScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecordStamp("3")
+                Column(Modifier.weight(1f)) {
+                    Text("补充信息", style = MaterialTheme.typography.titleLarge)
+                    Text("写下这次同行的故事", color = NunuloColors.Muted)
+                }
+                Text("3/4", color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold)
+            }
+        }
+        item {
+            SectionCard("拍摄时间与说明", "照片元数据会优先给出时间，也可以手动修正。") {
+                Text("拍摄时间", fontWeight = FontWeight.Bold)
+                Text("2026年8月13日 20:30", color = NunuloColors.Muted)
+                androidx.compose.material3.TextButton(onClick = {}) { Text("修改时间") }
+                Text("第一次带着伙伴一起看 MyGO!!!!! 的现场。", style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        item {
+            SectionCard("活动", "线下活动最多一个，线上生日合集可以同时选择。") {
+                CoordinateTag("MyGO!!!!! 7th LIVE")
+            }
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "record_interactions_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun RecordInteractionsScreenshot() = ScreenshotFrame(AppTab.Feed) {
