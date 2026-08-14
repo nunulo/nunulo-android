@@ -259,7 +259,7 @@ internal fun NunuloTopBar(tab: AppTab, busy: Boolean, unreadCount: Int, onRefres
 }
 
 @Composable
-private fun NunuloBottomBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
+internal fun NunuloBottomBar(selected: AppTab, onSelect: (AppTab) -> Unit) {
     val icons = mapOf<AppTab, Pair<ImageVector, ImageVector>>(
         AppTab.Feed to (Icons.Filled.Home to Icons.Outlined.Home),
         AppTab.Discover to (Icons.Filled.Explore to Icons.Outlined.Explore),
