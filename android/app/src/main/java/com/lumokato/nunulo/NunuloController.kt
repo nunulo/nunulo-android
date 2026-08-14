@@ -12,6 +12,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -38,6 +40,13 @@ internal class DetailRequestGate {
         requestVersion == version && selectedId == targetId
 }
 
+internal data class LoadedPart<T>(val value: T, val error: String?)
+
+internal fun <T> Result<T>.withFallback(fallback: T, failureLabel: String): LoadedPart<T> = fold(
+    onSuccess = { LoadedPart(it, null) },
+    onFailure = { LoadedPart(fallback, it.message?.takeIf(String::isNotBlank) ?: failureLabel) },
+)
+
 private data class LoadedState(
     val user: AuthUser,
     val feed: List<CheckinItem>,
@@ -52,6 +61,8 @@ private data class LoadedState(
     val exports: List<ExportItem>,
     val places: List<PlaceItem>,
     val eventSeries: List<EventSeriesItem>,
+    val screenErrors: Map<AppTab, String>,
+    val notificationsError: String?,
 )
 
 internal class NunuloController(
@@ -144,6 +155,10 @@ internal class NunuloController(
         private set
     var inviteCreating by mutableStateOf(false)
         private set
+    var screenErrors by mutableStateOf<Map<AppTab, String>>(emptyMap())
+        private set
+    var notificationsError by mutableStateOf<String?>(null)
+        private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
     var syncError by mutableStateOf<String?>(null)
@@ -188,27 +203,101 @@ internal class NunuloController(
     )
 
     private suspend fun loadState(): LoadedState = authed { token ->
-        val feed = api.listCheckins(apiBase, token, feedScope, feedOrder)
-        val mine = if (feedScope == FeedScope.Mine) feed else api.listCheckins(apiBase, token, FeedScope.Mine, FeedOrder.Latest)
-        val discovery = api.discovery(apiBase, token)
-        val completeCatalog = listOf("item_type", "work", "group", "character").associateWith { entityType ->
-            api.listCatalog(apiBase, token, entityType)
+        coroutineScope {
+        val userRequest = async { runCatching { api.me(apiBase, token) } }
+        val feedRequest = async { runCatching { api.listCheckins(apiBase, token, feedScope, feedOrder) } }
+        val mineRequest = if (feedScope == FeedScope.Mine) null else async { runCatching { api.listCheckins(apiBase, token, FeedScope.Mine, FeedOrder.Latest) } }
+        val discoveryRequest = async { runCatching { api.discovery(apiBase, token) } }
+        val catalogRequest = async {
+            runCatching {
+                listOf("item_type", "work", "group", "character").associateWith { entityType ->
+                    api.listCatalog(apiBase, token, entityType)
+                }
+            }
         }
+        val partnersRequest = async { runCatching { api.listPartners(apiBase, token) } }
+        val partnerRequestsRequest = async { runCatching { api.listPartnerRequests(apiBase, token) } }
+        val footprintRequest = async { runCatching { api.footprint(apiBase, token) } }
+        val notificationsRequest = async { runCatching { api.listNotifications(apiBase, token) } }
+        val peopleRequest = async { runCatching { api.listPeople(apiBase, token) } }
+        val albumsRequest = async { runCatching { api.listAlbums(apiBase, token) } }
+        val exportsRequest = async { runCatching { api.listExports(apiBase, token) } }
+        val placesRequest = async { runCatching { api.listPlaces(apiBase, token) } }
+        val eventSeriesRequest = async { runCatching { api.listEventSeries(apiBase, token) } }
+
+        val userResult = userRequest.await()
+        val feedResult = feedRequest.await()
+        val mineResult = mineRequest?.await() ?: feedResult
+        val discoveryResult = discoveryRequest.await()
+        val catalogResult = catalogRequest.await()
+        val partnersResult = partnersRequest.await()
+        val partnerRequestsResult = partnerRequestsRequest.await()
+        val footprintResult = footprintRequest.await()
+        val notificationsResult = notificationsRequest.await()
+        val peopleResult = peopleRequest.await()
+        val albumsResult = albumsRequest.await()
+        val exportsResult = exportsRequest.await()
+        val placesResult = placesRequest.await()
+        val eventSeriesResult = eventSeriesRequest.await()
+
+        listOf(
+            userResult,
+            feedResult,
+            mineResult,
+            discoveryResult,
+            catalogResult,
+            partnersResult,
+            partnerRequestsResult,
+            footprintResult,
+            notificationsResult,
+            peopleResult,
+            albumsResult,
+            exportsResult,
+            placesResult,
+            eventSeriesResult,
+        ).firstNotNullOfOrNull { result -> result.exceptionOrNull()?.takeIf(::looksLikeExpiredToken) }?.let { throw it }
+
+        val nextErrors = linkedMapOf<AppTab, String>()
+        fun <T> value(result: Result<T>, fallback: T, tab: AppTab, label: String): T {
+            val part = result.withFallback(fallback, "$label 加载失败")
+            part.error?.let { nextErrors.putIfAbsent(tab, it) }
+            return part.value
+        }
+
+        val nextFeed = value(feedResult, feedItems, AppTab.Feed, "动态")
+        val nextMine = value(mineResult, mineItems, AppTab.Profile, "我的记录")
+        val nextDiscovery = value(discoveryResult, discovery, AppTab.Discover, "发现内容")
+        val catalogFallback = discovery.catalog.ifEmpty { nextDiscovery.catalog }
+        val nextCatalog = value(catalogResult, catalogFallback, AppTab.Discover, "作品与角色目录")
+        val nextPartners = value(partnersResult, partners, AppTab.Partners, "伙伴")
+        val nextPartnerRequests = value(partnerRequestsResult, partnerRequests, AppTab.Partners, "伙伴补登记")
+        val nextFootprint = value(footprintResult, footprint, AppTab.Profile, "个人足迹")
+        val nextPeople = value(peopleResult, people, AppTab.Profile, "成员与关注")
+        val nextAlbums = value(albumsResult, albums, AppTab.Profile, "合集")
+        val nextExports = value(exportsResult, exports, AppTab.Profile, "数据导出")
+        val nextPlaces = value(placesResult, places, AppTab.Discover, "地点")
+        val nextEventSeries = value(eventSeriesResult, eventSeries, AppTab.Discover, "活动系列")
+        val nextNotifications = notificationsResult.withFallback(notifications, "通知加载失败")
+        listOfNotNull(nextErrors[AppTab.Discover], nextErrors[AppTab.Partners]).firstOrNull()?.let { nextErrors[AppTab.Capture] = it }
+
         LoadedState(
-            user = api.me(apiBase, token),
-            feed = feed,
-            mine = mine,
-            discovery = discovery.copy(catalog = completeCatalog),
-            partners = api.listPartners(apiBase, token),
-            partnerRequests = api.listPartnerRequests(apiBase, token),
-            footprint = api.footprint(apiBase, token),
-            notifications = api.listNotifications(apiBase, token),
-            people = api.listPeople(apiBase, token),
-            albums = api.listAlbums(apiBase, token),
-            exports = api.listExports(apiBase, token),
-            places = api.listPlaces(apiBase, token),
-            eventSeries = api.listEventSeries(apiBase, token),
+            user = userResult.getOrThrow(),
+            feed = nextFeed,
+            mine = nextMine,
+            discovery = nextDiscovery.copy(catalog = nextCatalog),
+            partners = nextPartners,
+            partnerRequests = nextPartnerRequests,
+            footprint = nextFootprint,
+            notifications = nextNotifications.value,
+            people = nextPeople,
+            albums = nextAlbums,
+            exports = nextExports,
+            places = nextPlaces,
+            eventSeries = nextEventSeries,
+            screenErrors = nextErrors,
+            notificationsError = nextNotifications.error,
         )
+        }
     }
 
     private fun applyState(state: LoadedState) {
@@ -225,6 +314,8 @@ internal class NunuloController(
         exports = state.exports
         places = state.places
         eventSeries = state.eventSeries
+        screenErrors = state.screenErrors
+        notificationsError = state.notificationsError
         collection = null
         stateReady = true
     }
@@ -234,9 +325,10 @@ internal class NunuloController(
         busy = true
         coroutineScope.launch {
             try {
-                applyState(loadState())
+                val state = loadState()
+                applyState(state)
                 syncError = null
-                message = nextMessage
+                message = if (state.screenErrors.isEmpty() && state.notificationsError == null) nextMessage else "已更新可用内容；部分页面可重新同步"
             } catch (error: Exception) {
                 if (looksLikeExpiredToken(error)) {
                     logout("登录已过期，请重新登录")
@@ -255,6 +347,8 @@ internal class NunuloController(
         preferences.edit().putString("activeTab", tab.name).apply()
         if (tab == AppTab.Capture && draft.latitude.isBlank() && draft.longitude.isBlank()) requestLocation(LocationPurpose.Draft)
     }
+
+    fun screenError(tab: AppTab): String? = screenErrors[tab] ?: syncError
 
     fun consumeMessage(value: String) {
         if (message == value) message = ""
@@ -475,6 +569,8 @@ internal class NunuloController(
         clearPartnerDetailState()
         collection = null
         syncError = null
+        screenErrors = emptyMap()
+        notificationsError = null
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage

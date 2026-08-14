@@ -42,6 +42,17 @@ internal fun PartnersScreen(controller: NunuloController) {
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var searchCode by rememberSaveable { mutableStateOf("") }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        controller.screenError(AppTab.Partners)?.let { error ->
+            item {
+                DetailLoadState(
+                    title = "伙伴内容没有同步完整",
+                    detail = "已经加载的伙伴和待确认关系会继续保留。",
+                    loading = false,
+                    error = error,
+                    onRetry = controller::refreshAll,
+                )
+            }
+        }
         item {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

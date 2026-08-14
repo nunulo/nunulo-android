@@ -65,6 +65,17 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
               }
             }
         }
+        controller.screenError(AppTab.Profile)?.let { error ->
+            item {
+                DetailLoadState(
+                    title = "个人内容没有同步完整",
+                    detail = "已经加载的足迹、合集与导出会继续保留。",
+                    loading = false,
+                    error = error,
+                    onRetry = controller::refreshAll,
+                )
+            }
+        }
         item {
             ProfileSectionTabs(section, onSelect = { section = it })
         }

@@ -53,6 +53,17 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                 Text("沿着作品、角色、活动与地区，找到下一条真实记录。", color = NunuloColors.Muted)
             }
         }
+        controller.screenError(AppTab.Discover)?.let { error ->
+            item {
+                DetailLoadState(
+                    title = "发现内容没有同步完整",
+                    detail = "已经加载的作品、活动与地区会继续保留。",
+                    loading = false,
+                    error = error,
+                    onRetry = controller::refreshAll,
+                )
+            }
+        }
         item {
             SectionCard("正在被记录", "关注作品、组合或角色后，它们会进入你的关注动态。") {
                 val catalogTypes = listOf("item_type" to "物件", "work" to "作品", "group" to "组合", "character" to "角色")

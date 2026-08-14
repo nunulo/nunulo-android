@@ -73,7 +73,7 @@ internal fun FeedScreen(controller: NunuloController) {
                 }
             }
         }
-        controller.syncError?.let { error ->
+        controller.screenError(AppTab.Feed)?.let { error ->
             item {
                 FeedSyncFailure(
                     detail = error,
@@ -84,7 +84,7 @@ internal fun FeedScreen(controller: NunuloController) {
             }
         }
         if (controller.feedItems.isEmpty()) {
-            if (controller.syncError == null) {
+            if (controller.screenError(AppTab.Feed) == null) {
                 item { Box(Modifier.padding(horizontal = 12.dp)) { EmptyState("这里还没有内容", "先发布第一条照片记录，或关注作品、角色和伙伴。") } }
             }
         }
@@ -348,9 +348,11 @@ internal fun NotificationsDialog(controller: NunuloController) {
     Dialog(onDismissRequest = { controller.notificationsOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         NotificationsPage(
             notifications = controller.notifications,
+            error = controller.notificationsError,
             onClose = { controller.notificationsOpen = false },
             onMarkAllRead = controller::markNotificationsRead,
             onOpen = controller::openNotification,
+            onRetry = controller::refreshAll,
         )
     }
 }
@@ -358,9 +360,11 @@ internal fun NotificationsDialog(controller: NunuloController) {
 @Composable
 internal fun NotificationsPage(
     notifications: List<NotificationItem>,
+    error: String? = null,
     onClose: () -> Unit,
     onMarkAllRead: () -> Unit,
     onOpen: (NotificationItem) -> Unit,
+    onRetry: () -> Unit = {},
 ) {
     val unreadCount = notifications.count { it.readAt == null }
     Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
@@ -383,9 +387,20 @@ internal fun NotificationsPage(
                 contentPadding = PaddingValues(12.dp),
                 modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
             ) {
-                if (notifications.isEmpty()) {
+                if (error != null) {
+                    item {
+                        DetailLoadState(
+                            title = "通知没有同步完整",
+                            detail = "已经加载的通知会继续保留。",
+                            loading = false,
+                            error = error,
+                            onRetry = onRetry,
+                        )
+                    }
+                }
+                if (notifications.isEmpty() && error == null) {
                     item { EmptyState("还没有通知", "伙伴补登记、喜欢、评论和治理结果会出现在这里。") }
-                } else {
+                } else if (notifications.isNotEmpty()) {
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {

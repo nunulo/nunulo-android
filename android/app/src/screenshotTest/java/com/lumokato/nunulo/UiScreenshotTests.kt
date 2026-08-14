@@ -386,6 +386,30 @@ fun NotificationsScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "notifications_partial_failure_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun NotificationsPartialFailureScreenshot() = NunuloTheme {
+    NotificationsPage(
+        notifications = listOf(
+            NotificationItem(
+                id = "notification-cached",
+                title = "伙伴补登记已确认",
+                body = "缓存中的消息仍然可以查看。",
+                targetType = "checkin_partner",
+                targetId = "partner-1",
+                readAt = null,
+                createdAt = "2026-08-14T10:00:00Z",
+            ),
+        ),
+        error = "当前网络不可用，无法取得最新通知。",
+        onClose = {},
+        onMarkAllRead = {},
+        onOpen = {},
+        onRetry = {},
+    )
+}
+
+@PreviewTest
 @Preview(name = "discover_content_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun DiscoverContentScreenshot() = ScreenshotFrame(AppTab.Discover) {

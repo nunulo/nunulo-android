@@ -87,6 +87,17 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                 CaptureStepIndicator(step)
             }
         }
+        controller.screenError(AppTab.Capture)?.let { error ->
+            item {
+                DetailLoadState(
+                    title = "关系目录没有同步完整",
+                    detail = "照片与本机草稿不受影响；重新同步后再选择伙伴、作品或活动。",
+                    loading = false,
+                    error = error,
+                    onRetry = controller::refreshAll,
+                )
+            }
+        }
         if (step == CaptureStep.Photos) item {
             SectionCard(if (draft.editingId == null) "实时记录" else "编辑记录", "相机优先推荐 1 张；历史相册可选择 1–9 张，首图即封面。") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
