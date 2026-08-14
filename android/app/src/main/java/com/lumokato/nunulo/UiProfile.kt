@@ -3,6 +3,7 @@ package com.lumokato.nunulo
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -40,6 +42,30 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
+internal enum class CommunityFollowFilter(val label: String) {
+    All("全部成员"),
+    Following("已关注"),
+}
+
+internal fun communityBrowseItems(
+    people: List<PersonItem>,
+    query: String,
+    followFilter: CommunityFollowFilter,
+): List<PersonItem> {
+    val term = query.trim().lowercase()
+    return people.asSequence()
+        .filter { followFilter == CommunityFollowFilter.All || it.following }
+        .filter { person ->
+            term.isBlank() || listOf(person.displayName, person.username.orEmpty(), person.bio.orEmpty())
+                .any { value -> value.lowercase().contains(term) }
+        }
+        .sortedWith(compareByDescending<PersonItem> { it.following }.thenByDescending { it.followerCount }.thenBy { it.displayName })
+        .toList()
+}
+
+internal fun memberRecordsFor(personId: Int, records: List<CheckinItem>): List<CheckinItem> =
+    records.filter { it.userId == personId }
+
 @Composable
 internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Unit) {
     val user = controller.currentUser
@@ -51,6 +77,8 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     var albumEditorOpen by rememberSaveable { mutableStateOf(false) }
     var editingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
+    var communityQuery by rememberSaveable { mutableStateOf("") }
+    var communityFollowFilterName by rememberSaveable { mutableStateOf(CommunityFollowFilter.All.name) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
@@ -149,19 +177,40 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             }
         }
         if (section == "community") item {
-            SectionCard("成员与关注", "关注成员和类别共同构成关注动态。") {
-                if (controller.people.isEmpty()) Text("暂无其他成员", color = NunuloColors.Muted)
-                controller.people.forEach { person ->
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(person.displayName, fontWeight = FontWeight.Bold)
-                                Text(person.username?.let { "@$it" } ?: person.bio.orEmpty(), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                            }
-                            TextButton(onClick = { controller.toggleFollow(person) }) { Text(if (person.following) "已关注" else "关注") }
-                            TextButton(onClick = { blockingPersonId = person.id }) { Text("屏蔽", color = NunuloColors.Danger) }
-                        }
+            val followFilter = runCatching { CommunityFollowFilter.valueOf(communityFollowFilterName) }.getOrDefault(CommunityFollowFilter.All)
+            val visiblePeople = communityBrowseItems(controller.people, communityQuery, followFilter)
+            SectionCard("社区成员", "找到正在记录同一作品、角色与旅程的人。关注后，他们的新记录会进入关注动态。") {
+                OutlinedTextField(
+                    value = communityQuery,
+                    onValueChange = { communityQuery = it },
+                    label = { Text("搜索显示名、用户名或简介") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    items(CommunityFollowFilter.entries) { option ->
+                        FilterChip(
+                            selected = followFilter == option,
+                            onClick = { communityFollowFilterName = option.name },
+                            label = { Text(option.label) },
+                        )
                     }
+                }
+                Text("${visiblePeople.size} 位成员", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                if (controller.people.isEmpty()) {
+                    Text("暂无其他成员。新成员加入后会出现在这里。", color = NunuloColors.Muted)
+                } else if (visiblePeople.isEmpty()) {
+                    Text("没有匹配的成员。可以换个名字、用户名或简介关键词。", color = NunuloColors.Muted)
+                }
+                visiblePeople.forEach { person ->
+                    MemberSummaryCard(
+                        person = person,
+                        following = person.id in controller.followingPersonIds,
+                        onOpen = { controller.selectPerson(person) },
+                        onFollow = { controller.toggleFollow(person) },
+                        onBlock = { blockingPersonId = person.id },
+                        avatar = { PersonAvatar(person, controller.baseUrl, controller.mediaApi) },
+                    )
                 }
             }
         }
@@ -224,6 +273,167 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 },
                 onDismiss = { if (controller.albumDeletingId == null) deletingAlbumId = null },
             )
+        }
+    }
+    controller.selectedPerson?.let { person ->
+        Dialog(onDismissRequest = controller::closePersonProfile, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            MemberProfilePage(
+                person = person,
+                records = controller.selectedPersonRecords,
+                loading = controller.personProfileLoading,
+                error = controller.personProfileError,
+                following = person.id in controller.followingPersonIds,
+                onClose = controller::closePersonProfile,
+                onRetry = controller::reloadPersonProfile,
+                onFollow = { controller.toggleFollow(person) },
+                onBlock = {
+                    controller.closePersonProfile()
+                    blockingPersonId = person.id
+                },
+                onOpenRecord = controller::openRecord,
+                onLike = controller::toggleLike,
+                isLiking = controller::isLiking,
+                avatar = { PersonAvatar(person, controller.baseUrl, controller.mediaApi) },
+                recordImage = { record -> RemoteImage(record.thumbUrl ?: record.displayUrl, controller.baseUrl, controller.mediaApi, aspect = 1.04f) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun PersonAvatar(person: PersonItem, apiBase: String, api: NunuloApi, modifier: Modifier = Modifier) {
+    Surface(shape = CircleShape, color = NunuloColors.Soft, modifier = modifier.size(54.dp)) {
+        if (person.avatarUrl.isNullOrBlank()) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(person.displayName.take(1).ifBlank { "N" }, color = NunuloColors.CoralDeep, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+            }
+        } else {
+            RemoteImage(person.avatarUrl, apiBase, api, aspect = 1f)
+        }
+    }
+}
+
+@Composable
+internal fun MemberSummaryCard(
+    person: PersonItem,
+    following: Boolean,
+    onOpen: () -> Unit,
+    onFollow: () -> Unit,
+    onBlock: () -> Unit,
+    avatar: @Composable () -> Unit,
+) {
+    Surface(
+        color = if (person.following) NunuloColors.Soft else Color.White,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NunuloColors.Hairline),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !following, onClick = onOpen),
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                avatar()
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(person.displayName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    person.username?.let { Text("@$it", color = NunuloColors.MapBlue, style = MaterialTheme.typography.bodySmall) }
+                    Text(person.bio?.takeIf(String::isNotBlank) ?: "还没有填写简介", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CoordinateTag("${person.followerCount} 位关注者")
+                Spacer(Modifier.weight(1f))
+                TextButton(enabled = !following, onClick = onFollow) { Text(if (following) "处理中" else if (person.following) "取消关注" else "关注") }
+                TextButton(enabled = !following, onClick = onBlock) { Text("屏蔽", color = NunuloColors.Danger) }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MemberProfilePage(
+    person: PersonItem,
+    records: List<CheckinItem>,
+    loading: Boolean,
+    error: String?,
+    following: Boolean,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+    onFollow: () -> Unit,
+    onBlock: () -> Unit,
+    onOpenRecord: (CheckinItem) -> Unit,
+    onLike: (CheckinItem) -> Unit,
+    isLiking: (CheckinItem) -> Boolean,
+    avatar: @Composable () -> Unit,
+    recordImage: @Composable (CheckinItem) -> Unit,
+) {
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RecordStamp("人", NunuloColors.MapBlue)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("成员主页", style = MaterialTheme.typography.titleMedium)
+                        Text("这位成员允许你看到的记录与联系", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                item {
+                    Surface(color = NunuloColors.Lilac, shape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                avatar()
+                                Column(Modifier.weight(1f)) {
+                                    Text(person.displayName, style = MaterialTheme.typography.titleLarge)
+                                    person.username?.let { Text("@$it", color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold) }
+                                }
+                            }
+                            Text(person.bio?.takeIf(String::isNotBlank) ?: "这位成员还没有填写简介。", color = NunuloColors.Muted)
+                            Row(Modifier.fillMaxWidth()) {
+                                ProfileMetric("关注者", person.followerCount, Modifier.weight(1f))
+                                ProfileMetric("正在关注", person.followingCount, Modifier.weight(1f))
+                                ProfileMetric("可见记录", records.size, Modifier.weight(1f))
+                            }
+                            Button(enabled = !following, onClick = onFollow, modifier = Modifier.fillMaxWidth().height(46.dp)) {
+                                Text(if (following) "正在更新" else if (person.following) "取消关注" else "关注这位成员")
+                            }
+                            TextButton(enabled = !following, onClick = onBlock, modifier = Modifier.fillMaxWidth()) { Text("屏蔽这位成员", color = NunuloColors.Danger) }
+                        }
+                    }
+                }
+                if (loading || error != null) {
+                    item {
+                        DetailLoadState(
+                            title = if (loading) "正在整理成员主页" else "成员主页没有加载完整",
+                            detail = "已加载的资料与记录会继续保留。",
+                            loading = loading,
+                            error = error,
+                            onRetry = onRetry,
+                        )
+                    }
+                }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("这位成员的旅行记录", style = MaterialTheme.typography.titleLarge)
+                        Text("这里只显示你当前有权查看的内容。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (!loading && error == null && records.isEmpty()) {
+                    item { EmptyState("还没有可见记录", "对方可能还没有发布，或记录只向自己和关注者开放。") }
+                }
+                items(records, key = { it.id }) { record ->
+                    FeedRecordCard(
+                        record = record,
+                        onOpen = { onOpenRecord(record) },
+                        onLike = { onLike(record) },
+                        liking = isLiking(record),
+                        image = { recordImage(record) },
+                    )
+                }
+            }
         }
     }
 }

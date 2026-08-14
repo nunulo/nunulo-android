@@ -118,6 +118,14 @@ internal class NunuloController(
         private set
     var people by mutableStateOf<List<PersonItem>>(emptyList())
         private set
+    var selectedPerson by mutableStateOf<PersonItem?>(null)
+        private set
+    var selectedPersonRecords by mutableStateOf<List<CheckinItem>>(emptyList())
+        private set
+    var personProfileLoading by mutableStateOf(false)
+        private set
+    var personProfileError by mutableStateOf<String?>(null)
+        private set
     var albums by mutableStateOf<List<AlbumItem>>(emptyList())
         private set
     var exports by mutableStateOf<List<ExportItem>>(emptyList())
@@ -201,6 +209,8 @@ internal class NunuloController(
         private set
     var albumRemovingRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
+    var followingPersonIds by mutableStateOf<Set<Int>>(emptySet())
+        private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
     var syncError by mutableStateOf<String?>(null)
@@ -213,6 +223,7 @@ internal class NunuloController(
     private val recordDetailRequests = DetailRequestGate()
     private val partnerDetailRequests = DetailRequestGate()
     private val collectionRequests = DetailRequestGate()
+    private val personProfileRequests = DetailRequestGate()
 
     internal val mediaApi: NunuloApi get() = api
     internal val baseUrl: String get() = apiBase
@@ -606,6 +617,8 @@ internal class NunuloController(
         footprint = FootprintState(null, emptyList())
         notifications = emptyList()
         people = emptyList()
+        selectedPerson = null
+        clearPersonProfileState()
         albums = emptyList()
         exports = emptyList()
         places = emptyList()
@@ -632,6 +645,7 @@ internal class NunuloController(
         albumOpeningId = null
         albumDeletingId = null
         albumRemovingRecordIds = emptySet()
+        followingPersonIds = emptySet()
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
@@ -836,6 +850,7 @@ internal class NunuloController(
     private fun updateRecordEverywhere(updated: CheckinItem) {
         feedItems = feedItems.map { if (it.id == updated.id) updated else it }
         mineItems = mineItems.map { if (it.id == updated.id) updated else it }
+        selectedPersonRecords = selectedPersonRecords.map { if (it.id == updated.id) updated else it }
         if (selectedRecord?.id == updated.id) selectedRecord = updated
     }
 
@@ -1269,14 +1284,79 @@ internal class NunuloController(
     }
 
     fun toggleFollow(person: PersonItem) {
+        if (person.id in followingPersonIds) return
+        followingPersonIds = followingPersonIds + person.id
         coroutineScope.launch {
             try {
                 val updated = authed { token -> api.setFollowing(apiBase, token, person) }
                 people = people.map { if (it.id == updated.id) updated else it }
+                if (selectedPerson?.id == updated.id) selectedPerson = updated
+                message = if (updated.following) "已关注 ${updated.displayName}" else "已取消关注 ${updated.displayName}"
             } catch (error: Exception) {
                 message = error.message ?: "关注操作失败"
+            } finally {
+                followingPersonIds = followingPersonIds - person.id
             }
         }
+    }
+
+    fun selectPerson(person: PersonItem) {
+        selectedPerson = person
+        selectedPersonRecords = emptyList()
+        loadPersonProfile(person)
+    }
+
+    fun reloadPersonProfile() {
+        selectedPerson?.let(::loadPersonProfile)
+    }
+
+    private fun loadPersonProfile(person: PersonItem) {
+        val targetId = person.id.toString()
+        val requestVersion = personProfileRequests.next()
+        personProfileLoading = true
+        personProfileError = null
+        coroutineScope.launch {
+            val (profileResult, recordsResult) = coroutineScope {
+                val profile = async { runCatching { authed { token -> api.getPerson(apiBase, token, person.id) } } }
+                val records = async {
+                    runCatching {
+                        authed { token ->
+                            api.listCheckins(
+                                apiBase,
+                                token,
+                                FeedScope.Discover,
+                                FeedOrder.Latest,
+                                mapOf("author_user_id" to targetId),
+                            ).let { memberRecordsFor(person.id, it) }
+                        }
+                    }
+                }
+                profile.await() to records.await()
+            }
+            if (!personProfileRequests.isCurrent(requestVersion, selectedPerson?.id?.toString(), targetId)) return@launch
+            profileResult.onSuccess { loaded ->
+                selectedPerson = loaded
+                people = people.map { if (it.id == loaded.id) loaded else it }
+            }
+            recordsResult.onSuccess { selectedPersonRecords = it }
+            personProfileError = listOfNotNull(
+                profileResult.exceptionOrNull()?.message?.takeIf(String::isNotBlank),
+                recordsResult.exceptionOrNull()?.message?.takeIf(String::isNotBlank),
+            ).distinct().joinToString("；").takeIf(String::isNotBlank)
+            personProfileLoading = false
+        }
+    }
+
+    fun closePersonProfile() {
+        selectedPerson = null
+        clearPersonProfileState()
+    }
+
+    private fun clearPersonProfileState() {
+        personProfileRequests.invalidate()
+        selectedPersonRecords = emptyList()
+        personProfileLoading = false
+        personProfileError = null
     }
 
     fun blockPerson(person: PersonItem) {
@@ -1285,6 +1365,7 @@ internal class NunuloController(
                 authed { token -> api.blockPerson(apiBase, token, person.id) }
                 people = people.filterNot { it.id == person.id }
                 feedItems = feedItems.filterNot { it.userId == person.id }
+                if (selectedPerson?.id == person.id) closePersonProfile()
                 message = "已屏蔽 ${person.displayName}"
             } catch (error: Exception) {
                 message = error.message ?: "屏蔽失败"

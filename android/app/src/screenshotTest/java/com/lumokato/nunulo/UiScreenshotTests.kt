@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -404,6 +405,63 @@ fun ProfileOwnerScreenshot() = ScreenshotFrame(AppTab.Profile) {
             avatar = { ScreenshotAvatar() },
         )
     }
+}
+
+@PreviewTest
+@Preview(name = "community_browse_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CommunityBrowseScreenshot() = ScreenshotFrame(AppTab.Profile) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ProfileSectionTabs("community", onSelect = {}) }
+        item {
+            SectionCard("社区成员", "找到正在记录同一作品、角色与旅程的人。关注后，他们的新记录会进入关注动态。") {
+                androidx.compose.material3.OutlinedTextField(
+                    value = "演出",
+                    onValueChange = {},
+                    label = { Text("搜索显示名、用户名或简介") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    androidx.compose.material3.FilterChip(selected = true, onClick = {}, label = { Text("全部成员") })
+                    androidx.compose.material3.FilterChip(selected = false, onClick = {}, label = { Text("已关注") })
+                }
+                Text("2 位成员", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                screenshotPeople().forEach { person ->
+                    MemberSummaryCard(
+                        person = person,
+                        following = false,
+                        onOpen = {},
+                        onFollow = {},
+                        onBlock = {},
+                        avatar = { ScreenshotPersonAvatar() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "member_profile_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun MemberProfileScreenshot() = NunuloTheme {
+    MemberProfilePage(
+        person = screenshotPeople().first(),
+        records = listOf(screenshotRecord().copy(userId = 11, authorName = "小灯的旅行册")),
+        loading = false,
+        error = null,
+        following = false,
+        onClose = {},
+        onRetry = {},
+        onFollow = {},
+        onBlock = {},
+        onOpenRecord = {},
+        onLike = {},
+        isLiking = { false },
+        avatar = { ScreenshotPersonAvatar() },
+        recordImage = { ScreenshotMedia("3 图 · MyGO!!!!! 现场") },
+    )
 }
 
 @PreviewTest
@@ -935,6 +993,15 @@ private fun ScreenshotAvatar() {
     }
 }
 
+@Composable
+private fun ScreenshotPersonAvatar() {
+    Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.CircleShape, modifier = Modifier.size(54.dp)) {
+        Box(contentAlignment = Alignment.Center) {
+            Text("旅", color = NunuloColors.CoralDeep, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
 private fun screenshotUser(roles: List<String>) = AuthUser(
     id = 1,
     displayName = "旅行收藏者",
@@ -944,6 +1011,27 @@ private fun screenshotUser(roles: List<String>) = AuthUser(
     storageUsageBytes = 0,
     storageQuotaBytes = 2_147_483_648,
     avatarUrl = null,
+)
+
+private fun screenshotPeople() = listOf(
+    PersonItem(
+        id = 11,
+        displayName = "小灯的旅行册",
+        username = "tomori_trip",
+        bio = "带着高松灯棉花娃娃去看每一场 MyGO!!!!! 演出。",
+        following = true,
+        followerCount = 28,
+        followingCount = 16,
+    ),
+    PersonItem(
+        id = 12,
+        displayName = "爱音今天也出门",
+        username = "anon_go",
+        bio = "记录演出、面基和散场后的城市夜景。",
+        following = false,
+        followerCount = 12,
+        followingCount = 21,
+    ),
 )
 
 private fun screenshotPartnerRequest(

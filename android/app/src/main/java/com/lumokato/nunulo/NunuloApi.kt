@@ -41,7 +41,16 @@ internal data class PublicConfig(
 
 internal data class CommentItem(val id: String, val displayName: String, val body: String, val createdAt: String?)
 internal data class NotificationItem(val id: String, val title: String, val body: String, val targetType: String?, val targetId: String?, val readAt: String?, val createdAt: String?)
-internal data class PersonItem(val id: Int, val displayName: String, val username: String?, val bio: String?, val following: Boolean)
+internal data class PersonItem(
+    val id: Int,
+    val displayName: String,
+    val username: String?,
+    val bio: String?,
+    val following: Boolean,
+    val avatarUrl: String? = null,
+    val followerCount: Int = 0,
+    val followingCount: Int = 0,
+)
 internal data class AlbumItem(
     val id: String,
     val title: String,
@@ -387,10 +396,23 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         executeJson(authorized(apiBase, "/api/users?limit=100", token).get().build()).getJSONArray("items").objectItems(::parsePerson)
     }
 
+    suspend fun getPerson(apiBase: String, token: String, personId: Int): PersonItem = withContext(Dispatchers.IO) {
+        parsePerson(executeJson(authorized(apiBase, "/api/users/$personId", token).get().build()).getJSONObject("user"))
+    }
+
     suspend fun setFollowing(apiBase: String, token: String, person: PersonItem): PersonItem = withContext(Dispatchers.IO) {
         val builder = authorized(apiBase, "/api/users/${person.id}/follow", token)
         val request = if (person.following) builder.delete().build() else builder.post(emptyBody()).build()
-        person.copy(following = executeJson(request).optBoolean("following"))
+        val following = executeJson(request).optBoolean("following")
+        val followerDelta = when {
+            following && !person.following -> 1
+            !following && person.following -> -1
+            else -> 0
+        }
+        person.copy(
+            following = following,
+            followerCount = (person.followerCount + followerDelta).coerceAtLeast(0),
+        )
     }
 
     suspend fun blockPerson(apiBase: String, token: String, personId: Int) = withContext(Dispatchers.IO) {
@@ -522,12 +544,15 @@ private fun parseNotification(json: JSONObject) = NotificationItem(
     createdAt = json.optionalString("created_at"),
 )
 
-private fun parsePerson(json: JSONObject) = PersonItem(
+internal fun parsePerson(json: JSONObject) = PersonItem(
     id = json.getInt("id"),
     displayName = json.getString("display_name"),
     username = json.optionalString("username"),
     bio = json.optionalString("bio"),
     following = json.optBoolean("following"),
+    avatarUrl = json.optionalString("avatar_url"),
+    followerCount = json.optInt("follower_count"),
+    followingCount = json.optInt("following_count"),
 )
 
 internal fun parseAlbum(json: JSONObject) = AlbumItem(
