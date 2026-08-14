@@ -183,6 +183,8 @@ internal class NunuloController(
         private set
     var deletingRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
+    var mutatingPartnerRelationKeys by mutableStateOf<Set<String>>(emptySet())
+        private set
     var catalogCandidateCreating by mutableStateOf(false)
         private set
     var placeCreating by mutableStateOf(false)
@@ -609,6 +611,7 @@ internal class NunuloController(
         partnerRequestRecordIds = emptySet()
         resolvingPartnerRequestKeys = emptySet()
         deletingRecordIds = emptySet()
+        mutatingPartnerRelationKeys = emptySet()
         catalogCandidateCreating = false
         placeCreating = false
         albumCreating = false
@@ -817,6 +820,54 @@ internal class NunuloController(
         feedItems = feedItems.map { if (it.id == updated.id) updated else it }
         mineItems = mineItems.map { if (it.id == updated.id) updated else it }
         if (selectedRecord?.id == updated.id) selectedRecord = updated
+    }
+
+    private fun updateRecordRelations(recordId: String, transform: (CheckinItem) -> CheckinItem) {
+        feedItems = feedItems.map { if (it.id == recordId) transform(it) else it }
+        mineItems = mineItems.map { if (it.id == recordId) transform(it) else it }
+        selectedRecord = selectedRecord?.let { if (it.id == recordId) transform(it) else it }
+    }
+
+    private fun partnerRelationKey(recordId: String, partnerId: String): String = "$recordId:$partnerId"
+
+    fun isMutatingPartnerRelation(record: CheckinItem, partner: PartnerItem): Boolean =
+        partnerRelationKey(record.id, partner.id) in mutatingPartnerRelationKeys
+
+    fun setPartnerRelationVisibility(record: CheckinItem, partner: PartnerItem, visibility: String) {
+        val normalized = visibility.trim().lowercase()
+        val key = partnerRelationKey(record.id, partner.id)
+        if (normalized !in setOf("public", "private") || normalized == partner.relationVisibility || key in mutatingPartnerRelationKeys) return
+        mutatingPartnerRelationKeys = mutatingPartnerRelationKeys + key
+        coroutineScope.launch {
+            try {
+                val savedVisibility = authed { token ->
+                    api.updateCheckinPartnerVisibility(apiBase, token, record.id, partner.id, normalized)
+                }
+                updateRecordRelations(record.id) { it.withPartnerRelationVisibility(partner.id, savedVisibility) }
+                message = if (savedVisibility == "public") "${partner.name} 的出镜关系已公开显示" else "${partner.name} 的出镜关系仅相关成员可见"
+            } catch (error: Exception) {
+                message = error.message ?: "伙伴关系可见性更新失败"
+            } finally {
+                mutatingPartnerRelationKeys = mutatingPartnerRelationKeys - key
+            }
+        }
+    }
+
+    fun removePartnerFromRecord(record: CheckinItem, partner: PartnerItem) {
+        val key = partnerRelationKey(record.id, partner.id)
+        if (key in mutatingPartnerRelationKeys) return
+        mutatingPartnerRelationKeys = mutatingPartnerRelationKeys + key
+        coroutineScope.launch {
+            try {
+                authed { token -> api.removeCheckinPartner(apiBase, token, record.id, partner.id) }
+                updateRecordRelations(record.id) { it.withoutPartnerRelation(partner.id) }
+                message = "已从这条记录移除 ${partner.name}；伙伴资料与其他记录不受影响"
+            } catch (error: Exception) {
+                message = error.message ?: "移除伙伴关系失败"
+            } finally {
+                mutatingPartnerRelationKeys = mutatingPartnerRelationKeys - key
+            }
+        }
     }
 
     fun toggleLike(record: CheckinItem) {

@@ -85,7 +85,9 @@ class ApiTest {
                             .put("visibility", "public")
                             .put("moderation_status", "active")
                             .put("record_count", 1)
-                            .put("can_edit", true),
+                            .put("can_edit", true)
+                            .put("relation_status", "approved")
+                            .put("relation_visibility", "private"),
                     ),
                 )
                 .put(
@@ -117,7 +119,17 @@ class ApiTest {
         assertEquals(listOf("photo-1", "photo-2"), record.photoIds)
         assertEquals(listOf("棉花娃娃", "BanG Dream!", "户山香澄"), record.taxonomyNames)
         assertEquals("N-ABC", record.partners.single().publicCode)
+        assertEquals("private", record.partners.single().relationVisibility)
         assertEquals("offline_live", record.events.single().eventType)
+    }
+
+    @Test
+    fun partnerRelationVisibilityPayloadUsesExactStableContract() {
+        val payload = partnerRelationVisibilityPayload(" PRIVATE ")
+
+        assertEquals("/api/checkins/checkin-1/partners/partner-1/visibility", partnerRelationVisibilityPath("checkin-1", "partner-1"))
+        assertEquals(setOf("visibility"), payload.keys().asSequence().toSet())
+        assertEquals("private", payload.getString("visibility"))
     }
 
     @Test

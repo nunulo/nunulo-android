@@ -273,6 +273,23 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         )
     }
 
+    suspend fun updateCheckinPartnerVisibility(
+        apiBase: String,
+        token: String,
+        checkinId: String,
+        partnerId: String,
+        visibility: String,
+    ): String = withContext(Dispatchers.IO) {
+        executeJson(
+            authorized(apiBase, partnerRelationVisibilityPath(checkinId, partnerId), token)
+                .patch(partnerRelationVisibilityPayload(visibility).jsonBody()).build()
+        ).getString("visibility")
+    }
+
+    suspend fun removeCheckinPartner(apiBase: String, token: String, checkinId: String, partnerId: String) = withContext(Dispatchers.IO) {
+        executeJson(authorized(apiBase, "/api/checkins/$checkinId/partners/$partnerId", token).delete().build())
+    }
+
     suspend fun listPartnerMeetings(apiBase: String, token: String, partnerId: String): List<PartnerMeetingItem> = withContext(Dispatchers.IO) {
         executeJson(authorized(apiBase, "/api/partners/$partnerId/meetings", token).get().build())
             .getJSONArray("items").objectItems(::parsePartnerMeeting)
@@ -428,6 +445,12 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
     private fun authorized(apiBase: String, path: String, token: String): Request.Builder = http.authorizedBuilder(apiBase, path, token)
     private fun executeJson(request: Request): JSONObject = http.executeJson(request)
 }
+
+internal fun partnerRelationVisibilityPayload(visibility: String): JSONObject = JSONObject()
+    .put("visibility", visibility.trim().lowercase())
+
+internal fun partnerRelationVisibilityPath(checkinId: String, partnerId: String): String =
+    "/api/checkins/$checkinId/partners/$partnerId/visibility"
 
 internal fun checkinFeedPath(scope: FeedScope, order: FeedOrder, filters: Map<String, String> = emptyMap()): String = queryPath(
     "/api/checkins",

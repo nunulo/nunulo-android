@@ -242,6 +242,36 @@ fun PartnerRequestStatesScreenshot() = ScreenshotFrame(AppTab.Partners) {
 }
 
 @PreviewTest
+@Preview(name = "partner_relation_privacy_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerRelationPrivacyScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("出镜伙伴", "每段出镜关系有独立的公开范围，不会改变伙伴资料本身的隐私。") {
+                PartnerRelationCard(
+                    partner = screenshotPartner().copy(relationVisibility = "public"),
+                    recordAuthorUserId = 8,
+                    viewerUserId = 8,
+                    mutating = false,
+                    onOpen = {},
+                    onChangeVisibility = {},
+                    onRemove = {},
+                )
+                PartnerRelationCard(
+                    partner = screenshotMeetingPartner().copy(relationVisibility = "private"),
+                    recordAuthorUserId = 8,
+                    viewerUserId = 8,
+                    mutating = true,
+                    onOpen = {},
+                    onChangeVisibility = {},
+                    onRemove = {},
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "partner_detail_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun PartnerDetailScreenshot() = NunuloTheme {

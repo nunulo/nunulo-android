@@ -192,6 +192,7 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
     var reportOpen by rememberSaveable(record.id) { mutableStateOf(false) }
     var editDraftConflictOpen by rememberSaveable(record.id) { mutableStateOf(false) }
     var deleteConfirmOpen by rememberSaveable(record.id) { mutableStateOf(false) }
+    var removingPartnerId by rememberSaveable(record.id) { mutableStateOf<String?>(null) }
     var partnerCode by rememberSaveable(record.id) { mutableStateOf("") }
     if (reportOpen) {
         AlertDialog(
@@ -230,6 +231,23 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
             onDismiss = { deleteConfirmOpen = false },
         )
         return
+    }
+    removingPartnerId?.let { partnerId ->
+        val partner = record.partners.firstOrNull { it.id == partnerId }
+        if (partner != null) {
+            ConfirmActionDialog(
+                title = "移除出镜伙伴？",
+                body = "${partner.name} 会从这条记录和由此推导的相遇统计中移除；伙伴资料、照片和其他记录不会删除。",
+                confirmLabel = "移除伙伴关系",
+                onConfirm = {
+                    removingPartnerId = null
+                    controller.removePartnerFromRecord(record, partner)
+                },
+                onDismiss = { removingPartnerId = null },
+            )
+            return
+        }
+        removingPartnerId = null
     }
     Dialog(onDismissRequest = controller::closeRecord, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
@@ -292,9 +310,17 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 }
                 if (record.partners.isNotEmpty()) {
                     item {
-                        SectionCard("出镜伙伴", "从记录继续进入伙伴自己的相册与足迹。") {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(record.partners, key = { it.id }) { partner -> AssistChip(onClick = { controller.closeRecord(); controller.selectPartner(partner); controller.selectTab(AppTab.Partners) }, label = { Text(partner.name) }) }
+                        SectionCard("出镜伙伴", "每段出镜关系有独立的公开范围，不会改变伙伴资料本身的隐私。") {
+                            record.partners.forEach { partner ->
+                                PartnerRelationCard(
+                                    partner = partner,
+                                    recordAuthorUserId = record.userId,
+                                    viewerUserId = controller.currentUser?.id,
+                                    mutating = controller.isMutatingPartnerRelation(record, partner),
+                                    onOpen = { controller.closeRecord(); controller.selectPartner(partner); controller.selectTab(AppTab.Partners) },
+                                    onChangeVisibility = { controller.setPartnerRelationVisibility(record, partner, it) },
+                                    onRemove = { removingPartnerId = partner.id },
+                                )
                             }
                         }
                     }
@@ -388,6 +414,47 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                     }
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PartnerRelationCard(
+    partner: PartnerItem,
+    recordAuthorUserId: Int,
+    viewerUserId: Int?,
+    mutating: Boolean,
+    onOpen: () -> Unit,
+    onChangeVisibility: (String) -> Unit,
+    onRemove: () -> Unit,
+) {
+    val state = partner.relationUiState(recordAuthorUserId, viewerUserId)
+    Surface(
+        color = if (partner.relationVisibility == "public") NunuloColors.Lilac else NunuloColors.Placeholder,
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp(partner.name.take(1).ifBlank { "伴" }, if (partner.relationVisibility == "public") NunuloColors.MapBlue else NunuloColors.Muted)
+                Column(Modifier.weight(1f)) {
+                    Text(partner.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(partner.publicCode, color = NunuloColors.MapBlue, style = MaterialTheme.typography.labelSmall)
+                }
+                CoordinateTag(state.confirmationLabel)
+            }
+            Text(state.visibilityLabel, color = if (partner.relationVisibility == "public") NunuloColors.Leaf else NunuloColors.Ink, fontWeight = FontWeight.Bold)
+            Text(state.visibilityDetail, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("查看伙伴") }
+                Spacer(Modifier.weight(1f))
+                if (state.canManage) {
+                    TextButton(enabled = !mutating, onClick = { onChangeVisibility(state.nextVisibility) }) {
+                        Text(if (mutating) "更新中" else state.visibilityActionLabel, color = NunuloColors.MapBlue)
+                    }
+                    TextButton(enabled = !mutating, onClick = onRemove) { Text("移除", color = NunuloColors.Danger) }
+                }
             }
         }
     }

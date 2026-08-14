@@ -67,6 +67,31 @@ internal data class PartnerItem(
     val relationVisibility: String = "public",
 )
 
+internal data class PartnerRelationUiState(
+    val confirmationLabel: String,
+    val visibilityLabel: String,
+    val visibilityDetail: String,
+    val canManage: Boolean,
+    val nextVisibility: String,
+    val visibilityActionLabel: String,
+)
+
+internal fun PartnerItem.relationUiState(recordAuthorUserId: Int, viewerUserId: Int?): PartnerRelationUiState {
+    val isPublic = relationVisibility == "public"
+    return PartnerRelationUiState(
+        confirmationLabel = if (relationStatus == "approved") "双方已确认" else "等待确认",
+        visibilityLabel = if (isPublic) "公开显示" else "仅相关成员",
+        visibilityDetail = if (isPublic) {
+            "确认后会出现在伙伴主页与相遇统计中。"
+        } else {
+            "只向记录作者和伙伴所有者显示这段关系。"
+        },
+        canManage = viewerUserId != null && viewerUserId in setOf(recordAuthorUserId, ownerUserId),
+        nextVisibility = if (isPublic) "private" else "public",
+        visibilityActionLabel = if (isPublic) "改为仅相关成员" else "改为公开显示",
+    )
+}
+
 internal data class PartnerRequestItem(
     val checkinId: String,
     val partnerId: String,
@@ -350,6 +375,16 @@ internal fun parsePartner(json: JSONObject): PartnerItem = PartnerItem(
     ownerApproved = json.optBoolean("owner_approved", true),
     relationStatus = json.optString("relation_status", "approved"),
     relationVisibility = json.optString("relation_visibility", "public"),
+)
+
+internal fun CheckinItem.withPartnerRelationVisibility(partnerId: String, visibility: String): CheckinItem = copy(
+    partners = partners.map { partner ->
+        if (partner.id == partnerId) partner.copy(relationVisibility = visibility) else partner
+    },
+)
+
+internal fun CheckinItem.withoutPartnerRelation(partnerId: String): CheckinItem = copy(
+    partners = partners.filterNot { it.id == partnerId },
 )
 
 internal fun parsePartnerRequest(json: JSONObject): PartnerRequestItem = PartnerRequestItem(
