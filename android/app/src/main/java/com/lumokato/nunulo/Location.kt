@@ -7,6 +7,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -71,11 +72,18 @@ internal suspend fun currentLocation(context: Context): LocationFix? {
     } else emptyList()
     val now = System.currentTimeMillis()
     chooseBestLocation(current, now, coarseOnly, allowLastKnown = false)?.let { return it }
-    return chooseBestLocation(lastKnownLocations(manager), now, coarseOnly, allowLastKnown = true)
+    return chooseBestLocation(lastKnownLocations(context, manager), now, coarseOnly, allowLastKnown = true)
 }
 
+@RequiresApi(Build.VERSION_CODES.R)
 private suspend fun providerLocation(context: Context, manager: LocationManager, provider: String): LocationFix? =
     withTimeoutOrNull(LOCATION_TIMEOUT_MS) { suspendCancellableCoroutine { continuation ->
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            continuation.resume(null)
+            return@suspendCancellableCoroutine
+        }
         val cancellationSignal = CancellationSignal()
         continuation.invokeOnCancellation { cancellationSignal.cancel() }
         runCatching {
@@ -87,5 +95,10 @@ private suspend fun providerLocation(context: Context, manager: LocationManager,
         }
     } }
 
-private fun lastKnownLocations(manager: LocationManager): List<LocationFix> = manager.getProviders(true)
+private fun lastKnownLocations(context: Context, manager: LocationManager): List<LocationFix> {
+    val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    if (!hasFine && !hasCoarse) return emptyList()
+    return manager.getProviders(true)
     .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider)?.toFix(isLastKnown = true) }.getOrNull() }
+}
