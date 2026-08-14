@@ -3,6 +3,8 @@ package com.lumokato.nunulo
 import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.UUID
 
 internal data class PhotoItem(
@@ -191,6 +193,74 @@ internal data class EventItem(
     val recordCount: Int,
     val canEdit: Boolean,
 )
+
+internal enum class EventPeriodFilter(val label: String) {
+    Upcoming("近期"),
+    Past("往期"),
+    All("全部"),
+}
+
+internal enum class EventKindFilter(val label: String) {
+    All("全部类型"),
+    Offline("线下"),
+    Online("线上"),
+}
+
+private fun String?.eventInstant(): Instant? = this?.let { value ->
+    runCatching { OffsetDateTime.parse(value).toInstant() }
+        .recoverCatching { Instant.parse(value) }
+        .getOrNull()
+}
+
+internal fun EventItem.isPast(now: Instant): Boolean = (endsAt.eventInstant() ?: startsAt.eventInstant())?.isBefore(now) == true
+
+internal fun EventItem.periodLabel(now: Instant): String {
+    val start = startsAt.eventInstant()
+    val end = endsAt.eventInstant()
+    return when {
+        (end ?: start)?.isBefore(now) == true -> "往期"
+        start != null && !start.isAfter(now) && (end == null || !end.isBefore(now)) -> "进行中"
+        start != null -> "即将开始"
+        else -> "日期待定"
+    }
+}
+
+internal fun eventBrowseItems(
+    events: List<EventItem>,
+    query: String,
+    period: EventPeriodFilter,
+    kind: EventKindFilter,
+    now: Instant,
+): List<EventItem> {
+    val needle = query.trim().lowercase()
+    val filtered = events.filter { event ->
+        val matchesQuery = needle.isBlank() || listOf(
+            event.name,
+            event.description,
+            event.place?.name.orEmpty(),
+            event.series?.canonicalName.orEmpty(),
+        ).any { it.lowercase().contains(needle) }
+        val matchesPeriod = when (period) {
+            EventPeriodFilter.Upcoming -> !event.isPast(now)
+            EventPeriodFilter.Past -> event.isPast(now)
+            EventPeriodFilter.All -> true
+        }
+        val matchesKind = when (kind) {
+            EventKindFilter.All -> true
+            EventKindFilter.Offline -> event.eventType.startsWith("offline_")
+            EventKindFilter.Online -> event.eventType.startsWith("online_")
+        }
+        matchesQuery && matchesPeriod && matchesKind
+    }
+    val (upcoming, past) = filtered.partition { !it.isPast(now) }
+    val orderedUpcoming = upcoming.sortedBy { it.startsAt.eventInstant() ?: Instant.MAX }
+    val orderedPast = past.sortedByDescending { it.endsAt.eventInstant() ?: it.startsAt.eventInstant() ?: Instant.MIN }
+    return when (period) {
+        EventPeriodFilter.Upcoming -> orderedUpcoming
+        EventPeriodFilter.Past -> orderedPast
+        EventPeriodFilter.All -> orderedUpcoming + orderedPast
+    }
+}
 
 internal data class TopicItem(
     val id: String,

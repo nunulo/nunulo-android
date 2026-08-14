@@ -255,6 +255,7 @@ internal class NunuloController(
         val albumsRequest = async { runCatching { api.listAlbums(apiBase, token) } }
         val exportsRequest = async { runCatching { api.listExports(apiBase, token) } }
         val placesRequest = async { runCatching { api.listPlaces(apiBase, token) } }
+        val eventsRequest = async { runCatching { api.listEvents(apiBase, token) } }
         val eventSeriesRequest = async { runCatching { api.listEventSeries(apiBase, token) } }
 
         val userResult = userRequest.await()
@@ -270,6 +271,7 @@ internal class NunuloController(
         val albumsResult = albumsRequest.await()
         val exportsResult = exportsRequest.await()
         val placesResult = placesRequest.await()
+        val eventsResult = eventsRequest.await()
         val eventSeriesResult = eventSeriesRequest.await()
 
         listOf(
@@ -286,6 +288,7 @@ internal class NunuloController(
             albumsResult,
             exportsResult,
             placesResult,
+            eventsResult,
             eventSeriesResult,
         ).firstNotNullOfOrNull { result -> result.exceptionOrNull()?.takeIf(::looksLikeExpiredToken) }?.let { throw it }
 
@@ -308,6 +311,7 @@ internal class NunuloController(
         val nextAlbums = value(albumsResult, albums, AppTab.Profile, "合集")
         val nextExports = value(exportsResult, exports, AppTab.Profile, "数据导出")
         val nextPlaces = value(placesResult, places, AppTab.Discover, "地点")
+        val nextEvents = value(eventsResult, nextDiscovery.events, AppTab.Discover, "活动目录")
         val nextEventSeries = value(eventSeriesResult, eventSeries, AppTab.Discover, "活动系列")
         val nextNotifications = notificationsResult.withFallback(notifications, "通知加载失败")
         listOfNotNull(nextErrors[AppTab.Discover], nextErrors[AppTab.Partners]).firstOrNull()?.let { nextErrors[AppTab.Capture] = it }
@@ -316,7 +320,7 @@ internal class NunuloController(
             user = userResult.getOrThrow(),
             feed = nextFeed,
             mine = nextMine,
-            discovery = nextDiscovery.copy(catalog = nextCatalog),
+            discovery = nextDiscovery.copy(catalog = nextCatalog, events = nextEvents),
             partners = nextPartners,
             partnerRequests = nextPartnerRequests,
             footprint = nextFootprint,

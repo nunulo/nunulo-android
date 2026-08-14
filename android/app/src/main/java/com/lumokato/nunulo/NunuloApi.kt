@@ -296,7 +296,7 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
     }
 
     suspend fun listEvents(apiBase: String, token: String): List<EventItem> = withContext(Dispatchers.IO) {
-        executeJson(authorized(apiBase, "/api/events?include_past=true", token).get().build())
+        executeJson(authorized(apiBase, eventListPath(includePast = true), token).get().build())
             .getJSONArray("items").objectItems(::parseEvent)
     }
 
@@ -451,6 +451,8 @@ internal fun partnerRelationVisibilityPayload(visibility: String): JSONObject = 
 
 internal fun partnerRelationVisibilityPath(checkinId: String, partnerId: String): String =
     "/api/checkins/$checkinId/partners/$partnerId/visibility"
+
+internal fun eventListPath(includePast: Boolean): String = "/api/events?include_past=$includePast"
 
 internal fun checkinFeedPath(scope: FeedScope, order: FeedOrder, filters: Map<String, String> = emptyMap()): String = queryPath(
     "/api/checkins",

@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.tools.screenshot.PreviewTest
+import java.time.Instant
 
 @Composable
 private fun ScreenshotFrame(tab: AppTab, content: @Composable () -> Unit) {
@@ -577,6 +578,53 @@ fun EventScheduleScreenshot() = ScreenshotFrame(AppTab.Discover) {
             )
         }
     }
+}
+
+@PreviewTest
+@Preview(name = "event_browser_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun EventBrowserScreenshot() = NunuloTheme {
+    EventBrowserPage(
+        events = listOf(
+            EventItem(
+                id = "event-upcoming",
+                name = "MyGO!!!!! 7th LIVE「こたえなんてなくても」",
+                eventType = "offline_live",
+                visibility = "public",
+                status = "active",
+                official = true,
+                place = PlaceItem("place-1", "北京工人体育场北门外场区域", latitude = 39.93, longitude = 116.44),
+                series = EventSeriesItem("series-1", "MyGO!!!!! LIVE 系列", "active"),
+                startsAt = "2026-08-16T10:00:00Z",
+                endsAt = "2026-08-16T13:00:00Z",
+                description = "带着伙伴一起看现场，关联记录即表示参与。",
+                recordCount = 18,
+                canEdit = false,
+            ),
+            EventItem(
+                id = "event-past",
+                name = "高松灯 2026 生日照片合集",
+                eventType = "online_birthday",
+                visibility = "public",
+                status = "active",
+                official = false,
+                place = null,
+                series = null,
+                startsAt = "2026-04-14T00:00:00Z",
+                endsAt = "2026-04-15T00:00:00Z",
+                description = "往期线上生日记录仍保留在活动归档。",
+                recordCount = 12,
+                canEdit = true,
+            ),
+        ),
+        onClose = {},
+        onCreate = {},
+        onOpen = {},
+        onEdit = {},
+        onDelete = {},
+        now = Instant.parse("2026-08-14T12:00:00Z"),
+        initialPeriod = EventPeriodFilter.All,
+    )
 }
 
 @PreviewTest

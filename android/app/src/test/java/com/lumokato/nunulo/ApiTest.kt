@@ -44,6 +44,11 @@ class ApiTest {
     }
 
     @Test
+    fun eventArchiveRequestExplicitlyIncludesPastEvents() {
+        assertEquals("/api/events?include_past=true", eventListPath(includePast = true))
+    }
+
+    @Test
     fun parsesMultiPhotoRecordRelationsPermissionsAndInteraction() {
         val record = parseCheckin(
             JSONObject()

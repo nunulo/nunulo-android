@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -36,12 +37,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import java.time.Instant
 import java.time.OffsetDateTime
 
 @Composable
 internal fun DiscoveryScreen(controller: NunuloController) {
     var candidateOpen by rememberSaveable { mutableStateOf(false) }
     var eventEditor by rememberSaveable { mutableStateOf(false) }
+    var eventBrowserOpen by rememberSaveable { mutableStateOf(false) }
     var editingEventId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingEventId by rememberSaveable { mutableStateOf<String?>(null) }
     var worldMapOpen by rememberSaveable { mutableStateOf(false) }
@@ -92,29 +95,23 @@ internal fun DiscoveryScreen(controller: NunuloController) {
         }
         item {
             SectionCard("活动", "线下 Live / 小团体面基使用单一地点；线上生日合集没有物理地点。") {
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Button(onClick = { editingEventId = null; eventEditor = true }) { Text("创建活动") }
                     Spacer(Modifier.weight(1f))
-                    Text("${controller.discovery.events.size} 个", color = NunuloColors.Muted)
+                    TextButton(onClick = { eventBrowserOpen = true }) { Text("查看全部 ${controller.discovery.events.size} 个") }
                 }
                 if (controller.discovery.events.isEmpty()) Text("暂无活动，首批 Live 可由热心用户建立，再由管理员转为官方。", color = NunuloColors.Muted)
-                controller.discovery.events.forEach { event ->
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth().clickable { controller.openEvent(event) }) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row {
-                                Column(Modifier.weight(1f)) {
-                                    Text(event.name, fontWeight = FontWeight.Bold)
-                                    Text("${eventTypeLabel(event.eventType)} · ${if (event.official) "官方" else "共建"} · ${event.recordCount} 条记录", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                                    event.place?.let { Text(it.name, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall) }
-                                }
-                                if (event.canEdit) {
-                                    TextButton(onClick = { editingEventId = event.id; eventEditor = true }) { Text("编辑") }
-                                    TextButton(onClick = { deletingEventId = event.id }) { Text("删除", color = NunuloColors.Danger) }
-                                }
-                            }
-                            if (event.description.isNotBlank()) Text(event.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
+                val now = Instant.now()
+                val upcoming = eventBrowseItems(controller.discovery.events, "", EventPeriodFilter.Upcoming, EventKindFilter.All, now)
+                val featured = upcoming.take(2).ifEmpty { eventBrowseItems(controller.discovery.events, "", EventPeriodFilter.Past, EventKindFilter.All, now).take(2) }
+                featured.forEach { event ->
+                    EventSummaryCard(
+                        event = event,
+                        now = now,
+                        onOpen = { controller.openEvent(event) },
+                        onEdit = if (event.canEdit) ({ editingEventId = event.id; eventEditor = true }) else null,
+                        onDelete = if (event.canEdit) ({ deletingEventId = event.id }) else null,
+                    )
                 }
             }
         }
@@ -156,6 +153,18 @@ internal fun DiscoveryScreen(controller: NunuloController) {
         }
     }
     if (candidateOpen) DiscoveryCandidateDialog(controller, onDismiss = { candidateOpen = false })
+    if (eventBrowserOpen) {
+        Dialog(onDismissRequest = { eventBrowserOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            EventBrowserPage(
+                events = controller.discovery.events,
+                onClose = { eventBrowserOpen = false },
+                onCreate = { editingEventId = null; eventEditor = true },
+                onOpen = controller::openEvent,
+                onEdit = { event -> editingEventId = event.id; eventEditor = true },
+                onDelete = { event -> deletingEventId = event.id },
+            )
+        }
+    }
     if (eventEditor) {
         EventEditorDialog(
             controller = controller,
@@ -175,6 +184,136 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                 },
                 onDismiss = { deletingEventId = null },
             )
+        }
+    }
+}
+
+@Composable
+internal fun EventBrowserPage(
+    events: List<EventItem>,
+    onClose: () -> Unit,
+    onCreate: () -> Unit,
+    onOpen: (EventItem) -> Unit,
+    onEdit: (EventItem) -> Unit,
+    onDelete: (EventItem) -> Unit,
+    now: Instant = Instant.now(),
+    initialPeriod: EventPeriodFilter = EventPeriodFilter.Upcoming,
+    initialKind: EventKindFilter = EventKindFilter.All,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var periodName by rememberSaveable { mutableStateOf(initialPeriod.name) }
+    var kindName by rememberSaveable { mutableStateOf(initialKind.name) }
+    val period = runCatching { EventPeriodFilter.valueOf(periodName) }.getOrDefault(EventPeriodFilter.Upcoming)
+    val kind = runCatching { EventKindFilter.valueOf(kindName) }.getOrDefault(EventKindFilter.All)
+    val visible = eventBrowseItems(events, query, period, kind, now)
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RecordStamp("活", NunuloColors.Leaf)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("活动", style = MaterialTheme.typography.titleMedium)
+                        Text("近期与往期 · ${events.size} 个", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("把同一场活动收进一页", style = MaterialTheme.typography.titleLarge)
+                            Text("搜索活动、地点或系列；往期记录会留在归档中。", color = NunuloColors.Muted)
+                        }
+                        Button(onClick = onCreate) { Text("创建") }
+                    }
+                }
+                item {
+                    SectionCard("查找活动") {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            label = { Text("活动、地点或系列") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(EventPeriodFilter.entries) { option ->
+                                FilterChip(selected = period == option, onClick = { periodName = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(EventKindFilter.entries) { option ->
+                                FilterChip(selected = kind == option, onClick = { kindName = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                    }
+                }
+                if (visible.isEmpty()) {
+                    item { EmptyState("没有符合条件的活动", "换一个关键词或筛选条件；也可以创建新的共建活动。") }
+                } else {
+                    items(visible, key = EventItem::id) { event ->
+                        EventSummaryCard(
+                            event = event,
+                            now = now,
+                            onOpen = { onOpen(event) },
+                            onEdit = if (event.canEdit) ({ onEdit(event) }) else null,
+                            onDelete = if (event.canEdit) ({ onDelete(event) }) else null,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun EventSummaryCard(
+    event: EventItem,
+    now: Instant,
+    onOpen: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = if (event.isPast(now)) NunuloColors.Placeholder else NunuloColors.Paper),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(event.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(eventTypeLabel(event.eventType), event.series?.canonicalName).filterNotNull().joinToString(" · "),
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (event.official) CoordinateTag("官方") else CoordinateTag("共建")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                CoordinateTag(event.periodLabel(now))
+                CoordinateTag("${event.recordCount} 条记录")
+            }
+            val schedule = listOfNotNull(event.startsAt?.let(::shortDate), event.endsAt?.let(::shortDate)).distinct().joinToString("—")
+            if (schedule.isNotBlank()) Text(schedule, color = NunuloColors.MapBlue, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            event.place?.let { Text(it.name, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall) }
+            if (event.description.isNotBlank()) Text(event.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("查看活动记录") }
+                Spacer(Modifier.weight(1f))
+                onEdit?.let { TextButton(onClick = it) { Text("编辑") } }
+                onDelete?.let { TextButton(onClick = it) { Text("删除", color = NunuloColors.Danger) } }
+            }
         }
     }
 }
