@@ -160,6 +160,29 @@ fun PartnerLongContentScreenshot() = ScreenshotFrame(AppTab.Partners) {
 }
 
 @PreviewTest
+@Preview(name = "partner_detail_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerDetailScreenshot() = NunuloTheme {
+    PartnerDetailPage(
+        partner = screenshotPartner(),
+        meetings = listOf(
+            PartnerMeetingItem(
+                partner = screenshotMeetingPartner(),
+                meetingCount = 3,
+                firstMetAt = "2026-06-21T10:00:00Z",
+                lastMetAt = "2026-08-13T12:10:00Z",
+            ),
+        ),
+        onClose = {},
+        onOpenRecords = {},
+        onEdit = {},
+        onDelete = {},
+        onSelectMeeting = {},
+        image = { ScreenshotMedia("伙伴在演出现场的封面照片") },
+    )
+}
+
+@PreviewTest
 @Preview(name = "profile_member_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun ProfileMemberScreenshot() = ScreenshotFrame(AppTab.Profile) {
@@ -446,4 +469,19 @@ private fun screenshotPartner() = PartnerItem(
     coverUrl = null,
     recordCount = 42,
     canEdit = true,
+)
+
+private fun screenshotMeetingPartner() = PartnerItem(
+    id = "partner-2",
+    publicCode = "N-2026-07-000091",
+    ownerUserId = 11,
+    name = "一起看过三次现场的千早爱音玩偶",
+    visibility = "public",
+    moderationStatus = "active",
+    itemType = CatalogRef("plush", "毛绒玩偶"),
+    work = CatalogRef("bandori", "BanG Dream!"),
+    character = CatalogRef("anon", "千早爱音"),
+    coverUrl = null,
+    recordCount = 18,
+    canEdit = false,
 )

@@ -5,10 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -32,6 +33,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
 internal fun PartnersScreen(controller: NunuloController) {
@@ -80,39 +83,17 @@ internal fun PartnersScreen(controller: NunuloController) {
                 }
             }
         }
-        controller.selectedPartner?.let { partner ->
-            item {
-                SectionCard("伙伴主页", "${partner.publicCode} · ${visibilityLabel(partner.visibility)}") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(Modifier.width(150.dp)) { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1f) }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(partner.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                            Text(listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name).joinToString(" · "), color = NunuloColors.Muted)
-                            Text("${partner.recordCount} 条记录", color = NunuloColors.Muted)
-                            Row {
-                                TextButton(onClick = { controller.openPartnerRecords(partner) }) { Text("查看动态") }
-                                if (partner.canEdit) TextButton(onClick = { editingId = partner.id; editorOpen = true }) { Text("编辑") }
-                                if (partner.canEdit) TextButton(onClick = { controller.deletePartner(partner) }) { Text("删除", color = NunuloColors.Danger) }
-                                TextButton(onClick = controller::clearSelectedPartner) { Text("收起") }
-                            }
-                        }
-                    }
-                    Text("见过的伙伴", fontWeight = FontWeight.Bold)
-                    if (controller.selectedPartnerMeetings.isEmpty()) Text("还没有经双方确认的跨主人相遇记录。", color = NunuloColors.Muted)
-                    controller.selectedPartnerMeetings.forEach { meeting ->
-                        Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth().clickable { controller.selectPartner(meeting.partner) }) {
-                            Row(Modifier.padding(10.dp)) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(meeting.partner.name, fontWeight = FontWeight.Bold)
-                                    Text(meeting.partner.publicCode, color = NunuloColors.Coral, style = MaterialTheme.typography.bodySmall)
-                                }
-                                Text("共同出现 ${meeting.meetingCount} 次\n${shortDate(meeting.firstMetAt)}—${shortDate(meeting.lastMetAt)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    }
+    controller.selectedPartner?.let { partner ->
+        PartnerDetailDialog(
+            controller = controller,
+            partner = partner,
+            onEdit = {
+                editingId = partner.id
+                controller.clearSelectedPartner()
+                editorOpen = true
+            },
+        )
     }
     if (editorOpen) {
         PartnerEditorDialog(
@@ -120,6 +101,120 @@ internal fun PartnersScreen(controller: NunuloController) {
             initial = editingId?.let { id -> controller.partners.firstOrNull { it.id == id } },
             onDismiss = { editorOpen = false },
         )
+    }
+}
+
+@Composable
+private fun PartnerDetailDialog(controller: NunuloController, partner: PartnerItem, onEdit: () -> Unit) {
+    Dialog(onDismissRequest = controller::clearSelectedPartner, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        PartnerDetailPage(
+            partner = partner,
+            meetings = controller.selectedPartnerMeetings,
+            onClose = controller::clearSelectedPartner,
+            onOpenRecords = { controller.openPartnerRecords(partner) },
+            onEdit = onEdit,
+            onDelete = {
+                controller.deletePartner(partner)
+                controller.clearSelectedPartner()
+            },
+            onSelectMeeting = controller::selectPartner,
+            image = { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.25f) },
+        )
+    }
+}
+
+@Composable
+internal fun PartnerDetailPage(
+    partner: PartnerItem,
+    meetings: List<PartnerMeetingItem>,
+    onClose: () -> Unit,
+    onOpenRecords: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onSelectMeeting: (PartnerItem) -> Unit,
+    image: @Composable () -> Unit,
+) {
+    var deletePending by rememberSaveable(partner.id) { mutableStateOf(false) }
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    RecordStamp("伴", NunuloColors.MapBlue)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("伙伴主页", style = MaterialTheme.typography.titleMedium)
+                        Text(partner.publicCode, color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(androidx.compose.ui.Alignment.CenterHorizontally),
+            ) {
+                item {
+                    Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), shadowElevation = 2.dp) {
+                        Column {
+                            image()
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(partner.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                                CoordinateTag(partner.publicCode)
+                                val relation = listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name)
+                                if (relation.isNotEmpty()) Text(relation.joinToString(" · "), color = NunuloColors.Muted)
+                                Text("${partner.recordCount} 条记录 · ${visibilityLabel(partner.visibility)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                                Button(onClick = onOpenRecords, modifier = Modifier.fillMaxWidth()) { Text("查看它的记录") }
+                            }
+                        }
+                    }
+                }
+                item {
+                    SectionCard("见过的伙伴", "只有双方确认过的合照关系才会出现在这里。") {
+                        if (meetings.isEmpty()) {
+                            Text("还没有确认过的相遇记录。以后在合照里补登记伙伴，就会慢慢形成同行关系。", color = NunuloColors.Muted)
+                        }
+                        meetings.forEach { meeting ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                modifier = Modifier.fillMaxWidth().clickable { onSelectMeeting(meeting.partner) },
+                            ) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(meeting.partner.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(meeting.partner.publicCode, color = NunuloColors.Coral, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Text(
+                                        "共同出现 ${meeting.meetingCount} 次\n${shortDate(meeting.firstMetAt)}—${shortDate(meeting.lastMetAt)}",
+                                        color = NunuloColors.Muted,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (partner.canEdit) {
+                    item {
+                        SectionCard("维护伙伴", "编辑名称、作品角色和主页可见性；删除不会影响已经发布的照片。") {
+                            Button(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("编辑伙伴资料") }
+                            TextButton(
+                                onClick = {
+                                    if (deletePending) onDelete() else deletePending = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (deletePending) "再次点击，确认删除伙伴" else "删除伙伴", color = NunuloColors.Danger)
+                            }
+                            if (deletePending) {
+                                Text("伙伴关系会删除，既有记录和照片仍会保留。离开本页可取消删除。", color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -165,59 +260,117 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
         .filter { it.work == null || workId.isBlank() || it.work.id == workId }
         .filter { groupId.isBlank() || it.group?.id == groupId }
         .filter { it.matchesCatalogQuery(characterQuery) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "登记伙伴" else "编辑伙伴") },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { OutlinedTextField(name, { name = it }, label = { Text("伙伴名称") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item {
-                    Text("物件类型（必选）", fontWeight = FontWeight.Bold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(controller.discovery.catalog["item_type"].orEmpty(), key = { it.id }) { entity -> FilterChip(selected = itemTypeId == entity.id, onClick = { itemTypeId = entity.id }, label = { Text(entity.canonicalName) }) }
+    val canSave = name.isNotBlank() && itemTypeId.isNotBlank() && !controller.busy
+    val save = {
+        controller.savePartner(initial?.id, name, itemTypeId, workId.takeIf(String::isNotBlank), characterId.takeIf(String::isNotBlank), visibility)
+        onDismiss()
+    }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+            Column {
+                Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onDismiss) { Text("取消") }
+                        Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                            Text(if (initial == null) "登记伙伴" else "编辑伙伴", style = MaterialTheme.typography.titleMedium)
+                            Text("名称、作品与角色会在以后记录时自动带入", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Button(enabled = canSave, onClick = save) { Text(if (controller.busy) "保存中" else "保存") }
                     }
                 }
-                item {
-                    Text("作品 / IP", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(workQuery, { workQuery = it }, label = { Text("搜索作品 / IP") }, placeholder = { Text("中文、日文、罗马字或别名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { FilterChip(selected = workId.isBlank(), onClick = { workId = ""; characterId = "" }, label = { Text("其他 / 无作品") }) }
-                        items(works, key = { it.id }) { entity -> FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; characterId = "" }, label = { Text(entity.canonicalName) }) }
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(12.dp),
+                    modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(androidx.compose.ui.Alignment.CenterHorizontally),
+                ) {
+                    item {
+                        Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(if (initial == null) "先确认它是谁" else "更新伙伴资料", style = MaterialTheme.typography.titleLarge)
+                            Text("作品和角色可以搜索正式名、日文名、罗马字或别名；找不到时可在这里直接提交候选。", color = NunuloColors.Muted)
+                        }
                     }
-                    if (workQuery.isNotBlank() && works.isEmpty()) TextButton(onClick = { candidateType = "work" }) { Text("没有“${workQuery.trim()}”？提交作品候选") }
-                }
-                item {
-                    Text("乐队 / 组合", fontWeight = FontWeight.Bold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { FilterChip(selected = groupId.isBlank(), onClick = { groupId = "" }, label = { Text("全部组合") }) }
-                        items(groups, key = { it.id }) { entity -> FilterChip(selected = groupId == entity.id, onClick = { groupId = entity.id }, label = { Text(entity.canonicalName) }) }
+                    item {
+                        SectionCard("基本信息", "伙伴名称会显示在记录、相遇关系和伙伴主页。") {
+                            OutlinedTextField(name, { name = it }, label = { Text("伙伴名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Text("物件类型（必选）", fontWeight = FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(controller.discovery.catalog["item_type"].orEmpty(), key = { it.id }) { entity ->
+                                    FilterChip(selected = itemTypeId == entity.id, onClick = { itemTypeId = entity.id }, label = { Text(entity.canonicalName) })
+                                }
+                            }
+                            if (itemTypeId.isBlank()) Text("请选择一个物件类型后才能保存。", color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
-                }
-                item {
-                    Text("角色", fontWeight = FontWeight.Bold)
-                    OutlinedTextField(characterQuery, { characterQuery = it }, label = { Text("搜索角色") }, placeholder = { Text("中文、日文、罗马字或别名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { FilterChip(selected = characterId.isBlank(), onClick = { characterId = "" }, label = { Text("无角色") }) }
-                        items(characters, key = { it.id }) { entity -> FilterChip(selected = characterId == entity.id, onClick = { characterId = entity.id; entity.work?.id?.let { workId = it } }, label = { Text(entity.canonicalName) }) }
+                    item {
+                        SectionCard("作品与角色", "先选作品，再按组合缩小角色范围；角色不是必填。") {
+                            Text("作品 / IP", fontWeight = FontWeight.Bold)
+                            OutlinedTextField(workQuery, { workQuery = it }, label = { Text("搜索作品 / IP") }, placeholder = { Text("中文、日文、罗马字或别名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item { FilterChip(selected = workId.isBlank(), onClick = { workId = ""; groupId = ""; characterId = "" }, label = { Text("其他 / 无作品") }) }
+                                items(works, key = { it.id }) { entity ->
+                                    FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; groupId = ""; characterId = "" }, label = { Text(entity.canonicalName) })
+                                }
+                            }
+                            if (workQuery.isNotBlank() && works.isEmpty()) {
+                                Button(onClick = { candidateType = "work" }, modifier = Modifier.fillMaxWidth()) { Text("提交“${workQuery.trim()}”为作品候选") }
+                            }
+
+                            Text("乐队 / 组合", fontWeight = FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item { FilterChip(selected = groupId.isBlank(), onClick = { groupId = "" }, label = { Text("全部组合") }) }
+                                items(groups, key = { it.id }) { entity ->
+                                    FilterChip(selected = groupId == entity.id, onClick = { groupId = entity.id; characterId = "" }, label = { Text(entity.canonicalName) })
+                                }
+                            }
+
+                            Text("角色", fontWeight = FontWeight.Bold)
+                            OutlinedTextField(characterQuery, { characterQuery = it }, label = { Text("搜索角色") }, placeholder = { Text("中文、日文、罗马字或别名") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item { FilterChip(selected = characterId.isBlank(), onClick = { characterId = "" }, label = { Text("无角色") }) }
+                                items(characters, key = { it.id }) { entity ->
+                                    FilterChip(
+                                        selected = characterId == entity.id,
+                                        onClick = {
+                                            characterId = entity.id
+                                            entity.work?.id?.let { workId = it }
+                                            entity.group?.id?.let { groupId = it }
+                                        },
+                                        label = { Text(entity.canonicalName) },
+                                    )
+                                }
+                            }
+                            if (characterQuery.isNotBlank() && characters.isEmpty()) {
+                                Button(enabled = workId.isNotBlank(), onClick = { candidateType = "character" }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(if (workId.isBlank()) "先选择角色所属作品" else "提交“${characterQuery.trim()}”为角色候选")
+                                }
+                            }
+                        }
                     }
-                    if (characterQuery.isNotBlank() && characters.isEmpty()) TextButton(enabled = workId.isNotBlank(), onClick = { candidateType = "character" }) { Text(if (workId.isBlank()) "先选择角色所属作品" else "没有“${characterQuery.trim()}”？提交角色候选") }
-                }
-                item {
-                    Text("伙伴主页可见性", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("private", "followers", "public").forEach { value -> FilterChip(selected = visibility == value, onClick = { visibility = value }, label = { Text(visibilityLabel(value)) }) }
+                    item {
+                        SectionCard("伙伴主页", "控制其他成员能否通过伙伴主页看到它的记录和相遇关系。") {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(listOf("private", "followers", "public")) { value ->
+                                    FilterChip(selected = visibility == value, onClick = { visibility = value }, label = { Text(visibilityLabel(value)) })
+                                }
+                            }
+                            Text(
+                                when (visibility) {
+                                    "public" -> "所有登录成员都能查看伙伴主页。"
+                                    "followers" -> "只有关注你的成员能查看伙伴主页。"
+                                    else -> "只有你自己能查看伙伴主页。"
+                                },
+                                color = NunuloColors.Muted,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = name.isNotBlank() && itemTypeId.isNotBlank() && !controller.busy, onClick = {
-                controller.savePartner(initial?.id, name, itemTypeId, workId.takeIf(String::isNotBlank), characterId.takeIf(String::isNotBlank), visibility)
-                onDismiss()
-            }) { Text("保存") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+    }
     candidateType?.let { type ->
         PartnerCatalogCandidateDialog(
             controller = controller,
