@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Explore
@@ -35,6 +38,8 @@ import androidx.compose.material.icons.outlined.NotificationsNone
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -131,6 +136,16 @@ private fun NunuloApp() {
             return@NunuloTheme
         }
 
+        if (!controller.stateReady) {
+            InitialSyncScreen(
+                busy = controller.busy,
+                error = controller.syncError,
+                onRetry = { controller.refreshAll("已恢复登录并同步内容") },
+                onLogout = controller::logout,
+            )
+            return@NunuloTheme
+        }
+
         Scaffold(
             topBar = {
                 NunuloTopBar(
@@ -165,6 +180,50 @@ private fun NunuloApp() {
 
         controller.selectedRecord?.let { RecordDetailDialog(controller, it) }
         if (controller.notificationsOpen) NotificationsDialog(controller)
+    }
+}
+
+@Composable
+internal fun InitialSyncScreen(
+    busy: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    Box(
+        Modifier.fillMaxSize().background(NunuloColors.Background).padding(horizontal = 20.dp, vertical = 28.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            color = NunuloColors.Paper,
+            shape = RoundedCornerShape(30.dp),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
+        ) {
+            Column(Modifier.padding(horizontal = 22.dp, vertical = 26.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    RecordStamp("N", if (error == null) NunuloColors.MapBlue else NunuloColors.Coral)
+                    Text("NUNULO · 伙伴旅行记录册", color = NunuloColors.Muted, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                }
+                if (error == null) {
+                    Text("正在整理你的旅行记录", style = MaterialTheme.typography.headlineMedium)
+                    Text("同步伙伴、照片、活动、足迹与通知。草稿保存在本机，同步中断也不会丢失。", color = NunuloColors.Muted)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(color = NunuloColors.MapBlue, modifier = Modifier.size(28.dp))
+                        Text(if (busy) "正在连接 Nunulo…" else "正在准备同步…", color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = onLogout) { Text("切换账号") }
+                } else {
+                    Text("暂时无法打开你的记录", style = MaterialTheme.typography.headlineMedium)
+                    Text("登录仍然有效，本机草稿也已保留。检查网络后重新同步，或切换账号。", color = NunuloColors.Muted)
+                    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text(error, color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                    }
+                    Button(enabled = !busy, onClick = onRetry, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text(if (busy) "同步中" else "重新同步") }
+                    TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text("切换账号") }
+                }
+            }
+        }
     }
 }
 

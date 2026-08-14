@@ -227,6 +227,65 @@ fun AuthLoginScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "initial_sync_loading_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun InitialSyncLoadingScreenshot() = NunuloTheme {
+    InitialSyncScreen(busy = true, error = null, onRetry = {}, onLogout = {})
+}
+
+@PreviewTest
+@Preview(name = "initial_sync_failure_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun InitialSyncFailureScreenshot() = NunuloTheme {
+    InitialSyncScreen(
+        busy = false,
+        error = "当前网络不可用，无法连接到 Nunulo 服务。",
+        onRetry = {},
+        onLogout = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "notifications_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun NotificationsScreenshot() = NunuloTheme {
+    NotificationsPage(
+        notifications = listOf(
+            NotificationItem(
+                id = "notification-1",
+                title = "记录收到评论",
+                body = "灯灯也来过这里！下次一起带伙伴去看现场。",
+                targetType = "checkin",
+                targetId = "record-1",
+                readAt = null,
+                createdAt = "2026-08-14T12:30:00Z",
+            ),
+            NotificationItem(
+                id = "notification-2",
+                title = "伙伴补登记待确认",
+                body = "另一位成员在合照中登记了你的伙伴，请确认是否共同出现。",
+                targetType = "checkin_partner",
+                targetId = "partner-1",
+                readAt = null,
+                createdAt = "2026-08-14T10:00:00Z",
+            ),
+            NotificationItem(
+                id = "notification-3",
+                title = "账号安全提醒",
+                body = "你的密码已经更新，旧会话已失效。",
+                targetType = "user",
+                targetId = "1",
+                readAt = "2026-08-13T18:00:00Z",
+                createdAt = "2026-08-13T18:00:00Z",
+            ),
+        ),
+        onClose = {},
+        onMarkAllRead = {},
+        onOpen = {},
+    )
+}
+
+@PreviewTest
 @Preview(name = "discover_content_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun DiscoverContentScreenshot() = ScreenshotFrame(AppTab.Discover) {

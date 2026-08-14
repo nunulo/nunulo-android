@@ -311,26 +311,88 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
 
 @Composable
 internal fun NotificationsDialog(controller: NunuloController) {
-    AlertDialog(
-        onDismissRequest = { controller.notificationsOpen = false },
-        title = { Text("通知") },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.widthIn(max = 520.dp)) {
-                if (controller.notifications.isEmpty()) item { EmptyState("暂无通知", "伙伴补登记、互动和治理结果会出现在这里。") }
-                items(controller.notifications, key = { it.id }) { notification ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = if (notification.readAt == null) NunuloColors.Soft else Color.White),
-                        modifier = Modifier.fillMaxWidth().clickable { controller.openNotification(notification) },
-                    ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text(notification.title, fontWeight = FontWeight.Bold)
-                            Text(notification.body, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    Dialog(onDismissRequest = { controller.notificationsOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        NotificationsPage(
+            notifications = controller.notifications,
+            onClose = { controller.notificationsOpen = false },
+            onMarkAllRead = controller::markNotificationsRead,
+            onOpen = controller::openNotification,
+        )
+    }
+}
+
+@Composable
+internal fun NotificationsPage(
+    notifications: List<NotificationItem>,
+    onClose: () -> Unit,
+    onMarkAllRead: () -> Unit,
+    onOpen: (NotificationItem) -> Unit,
+) {
+    val unreadCount = notifications.count { it.readAt == null }
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RecordStamp("信", NunuloColors.MapBlue)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("通知", style = MaterialTheme.typography.titleMedium)
+                        Text(if (unreadCount == 0) "没有未读消息" else "$unreadCount 条未读消息", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                if (notifications.isEmpty()) {
+                    item { EmptyState("还没有通知", "伙伴补登记、喜欢、评论和治理结果会出现在这里。") }
+                } else {
+                    item {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(if (unreadCount == 0) "都看完了" else "先看未读消息", style = MaterialTheme.typography.titleLarge)
+                                Text("点击通知会直接打开对应记录或功能页。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(enabled = unreadCount > 0, onClick = onMarkAllRead) { Text("全部已读") }
+                        }
+                    }
+                    items(notifications.sortedWith(compareBy<NotificationItem> { it.readAt != null }.thenByDescending { it.createdAt.orEmpty() }), key = { it.id }) { notification ->
+                        Surface(
+                            color = if (notification.readAt == null) NunuloColors.Soft else NunuloColors.Paper,
+                            shape = RoundedCornerShape(20.dp),
+                            shadowElevation = if (notification.readAt == null) 2.dp else 0.dp,
+                            modifier = Modifier.fillMaxWidth().clickable { onOpen(notification) },
+                        ) {
+                            Column(Modifier.padding(horizontal = 15.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(notification.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                    Text(if (notification.readAt == null) "未读" else "已读", color = if (notification.readAt == null) NunuloColors.Coral else NunuloColors.Muted, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                }
+                                Text(notification.body, color = NunuloColors.Muted)
+                                Text(
+                                    listOf(notificationKindLabel(notification.targetType), shortDate(notification.createdAt)).filter(String::isNotBlank).joinToString(" · "),
+                                    color = NunuloColors.MapBlue,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
                         }
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = controller::markNotificationsRead) { Text("全部已读") } },
-        dismissButton = { TextButton(onClick = { controller.notificationsOpen = false }) { Text("关闭") } },
-    )
+        }
+    }
+}
+
+internal fun notificationKindLabel(targetType: String?): String = when (targetType) {
+    "checkin" -> "记录互动"
+    "checkin_partner" -> "伙伴关系"
+    "invite_code" -> "邀请"
+    "photo" -> "照片与存储"
+    "user" -> "账号"
+    else -> "系统消息"
 }

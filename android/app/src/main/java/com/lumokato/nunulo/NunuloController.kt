@@ -113,6 +113,8 @@ internal class NunuloController(
         private set
     var busy by mutableStateOf(false)
         private set
+    var stateReady by mutableStateOf(false)
+        private set
     private var draftRequestId by mutableStateOf(UUID.randomUUID().toString())
     private var pendingDeleteId by mutableStateOf("")
 
@@ -185,6 +187,7 @@ internal class NunuloController(
         places = state.places
         eventSeries = state.eventSeries
         collection = null
+        stateReady = true
     }
 
     fun refreshAll(nextMessage: String = "已同步最新内容") {
@@ -380,6 +383,7 @@ internal class NunuloController(
                 message = "欢迎回来，${user.displayName}"
             } catch (error: Exception) {
                 message = error.message ?: "登录失败"
+                if (loggedIn) syncError = message
             } finally {
                 busy = false
             }
@@ -398,6 +402,7 @@ internal class NunuloController(
                 message = "账号已创建，欢迎 ${user.displayName}"
             } catch (error: Exception) {
                 message = error.message ?: "注册失败"
+                if (loggedIn) syncError = message
             } finally {
                 busy = false
             }
@@ -425,6 +430,7 @@ internal class NunuloController(
         selectedPartner = null
         collection = null
         syncError = null
+        stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
     }
@@ -889,19 +895,27 @@ internal class NunuloController(
 
     fun markNotificationsRead() {
         coroutineScope.launch {
-            runCatching { authed { token -> api.markNotificationsRead(apiBase, token) } }
-            notifications = notifications.map { it.copy(readAt = it.readAt ?: "now") }
+            try {
+                authed { token -> api.markNotificationsRead(apiBase, token) }
+                notifications = notifications.map { it.copy(readAt = it.readAt ?: "now") }
+                message = "通知已全部标记为已读"
+            } catch (error: Exception) {
+                message = error.message ?: "通知状态更新失败"
+            }
         }
     }
 
     fun openNotification(notification: NotificationItem) {
         notificationsOpen = false
-        if (notification.targetType == "checkin" && !notification.targetId.isNullOrBlank()) {
-            coroutineScope.launch {
-                runCatching { authed { token -> api.getCheckin(apiBase, token, notification.targetId) } }.getOrNull()?.let(::openRecord)
+        when {
+            notification.targetType == "checkin" && !notification.targetId.isNullOrBlank() -> {
+                coroutineScope.launch {
+                    val record = runCatching { authed { token -> api.getCheckin(apiBase, token, notification.targetId) } }.getOrNull()
+                    if (record == null) message = "这条记录暂时无法打开，可能已被删除或隐藏" else openRecord(record)
+                }
             }
-        } else {
-            selectTab(AppTab.Partners)
+            notification.targetType == "checkin_partner" -> selectTab(AppTab.Partners)
+            else -> selectTab(AppTab.Profile)
         }
     }
 }
