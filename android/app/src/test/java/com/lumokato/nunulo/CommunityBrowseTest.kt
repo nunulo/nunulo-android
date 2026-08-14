@@ -91,4 +91,15 @@ class CommunityBrowseTest {
 
         assertEquals(listOf(memberRecord), memberRecordsFor(8, listOf(unrelatedRecord, memberRecord)))
     }
+
+    @Test
+    fun followNotificationTargetsTheFollowerProfile() {
+        val follow = NotificationItem("n1", "新的关注", "旅行收藏者关注了你", "user", "42", null, null)
+        val malformed = follow.copy(targetId = "not-a-user")
+        val record = follow.copy(targetType = "checkin", targetId = "42")
+
+        assertEquals(42, notificationTargetUserId(follow))
+        assertEquals(null, notificationTargetUserId(malformed))
+        assertEquals(null, notificationTargetUserId(record))
+    }
 }

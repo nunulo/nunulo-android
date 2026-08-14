@@ -20,6 +20,9 @@ import java.util.UUID
 
 private const val CONTROLLER_LOG_TAG = "NunuloAndroid"
 
+internal fun notificationTargetUserId(notification: NotificationItem): Int? =
+    notification.targetId?.toIntOrNull()?.takeIf { notification.targetType == "user" && it > 0 }
+
 internal data class RecordCollection(
     val title: String,
     val subtitle: String = "",
@@ -1309,6 +1312,23 @@ internal class NunuloController(
         loadPersonProfile(person)
     }
 
+    fun openPerson(personId: Int) {
+        selectTab(AppTab.Profile)
+        people.firstOrNull { it.id == personId }?.let {
+            selectPerson(it)
+            return
+        }
+        coroutineScope.launch {
+            try {
+                val person = authed { token -> api.getPerson(apiBase, token, personId) }
+                people = (people + person).distinctBy(PersonItem::id)
+                selectPerson(person)
+            } catch (error: Exception) {
+                message = error.message ?: "成员主页暂时无法打开"
+            }
+        }
+    }
+
     fun reloadPersonProfile() {
         selectedPerson?.let(::loadPersonProfile)
     }
@@ -1536,6 +1556,7 @@ internal class NunuloController(
 
     fun openNotification(notification: NotificationItem) {
         notificationsOpen = false
+        val targetUserId = notificationTargetUserId(notification)
         when {
             notification.targetType == "checkin" && !notification.targetId.isNullOrBlank() -> {
                 coroutineScope.launch {
@@ -1544,6 +1565,7 @@ internal class NunuloController(
                 }
             }
             notification.targetType == "checkin_partner" -> selectTab(AppTab.Partners)
+            targetUserId != null -> openPerson(targetUserId)
             else -> selectTab(AppTab.Profile)
         }
     }
