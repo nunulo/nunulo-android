@@ -52,6 +52,8 @@ internal fun FeedScreen(controller: NunuloController) {
                 controller.collection?.let { target ->
                     target.event?.let { event ->
                         EventCollectionHeader(event, controller.feedItems, onBack = controller::loadFeed)
+                    } ?: target.album?.let { album ->
+                        AlbumCollectionHeader(album, controller.feedItems.size, onBack = controller::loadFeed)
                     } ?: target.catalogEntity?.let { entity ->
                         CatalogCollectionHeader(
                             entity = entity,
@@ -118,7 +120,53 @@ internal fun FeedScreen(controller: NunuloController) {
             }
         }
         items(controller.feedItems, key = CheckinItem::id) { record ->
-            FeedCard(record, controller, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                FeedCard(record, controller, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                controller.collection?.album?.let { album ->
+                    Surface(
+                        color = NunuloColors.Lilac,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("已收录在 ${album.title}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            TextButton(
+                                enabled = record.id !in controller.albumRemovingRecordIds,
+                                onClick = { controller.removeFromAlbum(record) },
+                            ) { Text(if (record.id in controller.albumRemovingRecordIds) "移除中" else "移出合集") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun AlbumCollectionHeader(
+    album: AlbumItem,
+    visibleCount: Int,
+    onBack: () -> Unit,
+) {
+    Surface(color = NunuloColors.Lilac, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp("集", NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text(album.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("我的照片记录册", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                EventHeaderTag(visibilityLabel(album.visibility))
+            }
+            if (album.description.isNotBlank()) {
+                Text(album.description, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EventHeaderTag("${album.itemCount} 条收录")
+                EventHeaderTag("当前可见 $visibleCount 条")
+            }
+            Text("从这里移除只会取消收录，原记录、照片和互动都会保留。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("返回动态") }
         }
     }
 }

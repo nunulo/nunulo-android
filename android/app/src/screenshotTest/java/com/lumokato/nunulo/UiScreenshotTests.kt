@@ -558,6 +558,66 @@ fun DiscoverContentScreenshot() = ScreenshotFrame(AppTab.Discover) {
 }
 
 @PreviewTest
+@Preview(name = "album_library_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun AlbumLibraryScreenshot() = ScreenshotFrame(AppTab.Profile) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ProfileSectionTabs("collection", onSelect = {}) }
+        item {
+            SectionCard("我的合集", "把想反复回看的记录收进一册；合集不会改变记录本身。") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("2 本合集", color = NunuloColors.Muted, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.Button(onClick = {}) { Text("创建合集") }
+                }
+                AlbumSummaryCard(
+                    album = screenshotAlbum(),
+                    opening = false,
+                    onOpen = {},
+                    onEdit = {},
+                    onDelete = {},
+                )
+                AlbumSummaryCard(
+                    album = AlbumItem("album-2", "高松灯生日记录", 12, "private", "每年留下的一张生日照片", "2026-04-14T00:00:00Z"),
+                    opening = false,
+                    onOpen = {},
+                    onEdit = {},
+                    onDelete = {},
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "album_editor_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun AlbumEditorScreenshot() = NunuloTheme {
+    AlbumEditorPage(
+        initial = screenshotAlbum(),
+        saving = false,
+        onDismiss = {},
+        onSave = { _, _, _, _ -> },
+    )
+}
+
+@PreviewTest
+@Preview(name = "album_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun AlbumCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { AlbumCollectionHeader(album = screenshotAlbum(), visibleCount = 6, onBack = {}) }
+        item {
+            FeedRecordCard(
+                record = screenshotRecord(),
+                onOpen = {},
+                onLike = {},
+                image = { ScreenshotMedia("合集封面记录") },
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "event_schedule_360x800", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun EventScheduleScreenshot() = ScreenshotFrame(AppTab.Discover) {
@@ -966,6 +1026,15 @@ private fun screenshotMeetingPartner() = PartnerItem(
     coverUrl = null,
     recordCount = 18,
     canEdit = false,
+)
+
+private fun screenshotAlbum() = AlbumItem(
+    id = "album-1",
+    title = "MyGO!!!!! 现场同行记录",
+    itemCount = 6,
+    visibility = "followers",
+    description = "把带着伙伴看过的 Live 和散场合照收在一起。",
+    createdAt = "2026-08-14T18:00:00Z",
 )
 
 private fun screenshotCatalog() = mapOf(

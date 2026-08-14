@@ -42,7 +42,15 @@ internal data class PublicConfig(
 internal data class CommentItem(val id: String, val displayName: String, val body: String, val createdAt: String?)
 internal data class NotificationItem(val id: String, val title: String, val body: String, val targetType: String?, val targetId: String?, val readAt: String?, val createdAt: String?)
 internal data class PersonItem(val id: Int, val displayName: String, val username: String?, val bio: String?, val following: Boolean)
-internal data class AlbumItem(val id: String, val title: String, val itemCount: Int, val visibility: String)
+internal data class AlbumItem(
+    val id: String,
+    val title: String,
+    val itemCount: Int,
+    val visibility: String,
+    val description: String = "",
+    val createdAt: String? = null,
+)
+internal data class AlbumContent(val album: AlbumItem, val checkinIds: List<String>)
 internal data class ExportItem(val id: String, val status: String, val createdAt: String?, val downloadUrl: String?)
 
 internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpClient()) {
@@ -393,13 +401,28 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         executeJson(authorized(apiBase, "/api/albums", token).get().build()).getJSONArray("items").objectItems(::parseAlbum)
     }
 
-    suspend fun createAlbum(apiBase: String, token: String, title: String): AlbumItem = withContext(Dispatchers.IO) {
-        val payload = JSONObject().put("title", title.trim()).put("description", "").put("visibility", "private")
-        parseAlbum(executeJson(authorized(apiBase, "/api/albums", token).post(payload.jsonBody()).build()))
+    suspend fun saveAlbum(apiBase: String, token: String, id: String?, title: String, description: String, visibility: String): AlbumItem = withContext(Dispatchers.IO) {
+        val builder = authorized(apiBase, id?.let { "/api/albums/$it" } ?: "/api/albums", token)
+        val body = albumPayload(title, description, visibility).jsonBody()
+        parseAlbum(executeJson(if (id == null) builder.post(body).build() else builder.patch(body).build()))
     }
 
     suspend fun addAlbumItem(apiBase: String, token: String, albumId: String, checkinId: String): AlbumItem = withContext(Dispatchers.IO) {
         parseAlbum(executeJson(authorized(apiBase, "/api/albums/$albumId/checkins/$checkinId", token).post(emptyBody()).build()))
+    }
+
+    suspend fun albumContent(apiBase: String, token: String, albumId: String): AlbumContent = withContext(Dispatchers.IO) {
+        val json = executeJson(authorized(apiBase, "/api/albums/$albumId/checkins", token).get().build())
+        AlbumContent(parseAlbum(json.getJSONObject("album")), json.optJSONArray("checkin_ids").stringItems())
+    }
+
+    suspend fun removeAlbumItem(apiBase: String, token: String, albumId: String, checkinId: String): AlbumItem = withContext(Dispatchers.IO) {
+        parseAlbum(executeJson(authorized(apiBase, "/api/albums/$albumId/checkins/$checkinId", token).delete().build()))
+    }
+
+    suspend fun deleteAlbum(apiBase: String, token: String, albumId: String) = withContext(Dispatchers.IO) {
+        executeJson(authorized(apiBase, "/api/albums/$albumId", token).delete().build())
+        Unit
     }
 
     suspend fun listExports(apiBase: String, token: String): List<ExportItem> = withContext(Dispatchers.IO) {
@@ -507,12 +530,19 @@ private fun parsePerson(json: JSONObject) = PersonItem(
     following = json.optBoolean("following"),
 )
 
-private fun parseAlbum(json: JSONObject) = AlbumItem(
+internal fun parseAlbum(json: JSONObject) = AlbumItem(
     id = json.getString("id"),
     title = json.getString("title"),
     itemCount = json.optInt("item_count"),
     visibility = json.optString("visibility", "private"),
+    description = json.optString("description"),
+    createdAt = json.optionalString("created_at"),
 )
+
+internal fun albumPayload(title: String, description: String, visibility: String) = JSONObject()
+    .put("title", title.trim())
+    .put("description", description.trim())
+    .put("visibility", visibility.trim().lowercase())
 
 private fun parseExport(json: JSONObject) = ExportItem(
     id = json.getString("id"),

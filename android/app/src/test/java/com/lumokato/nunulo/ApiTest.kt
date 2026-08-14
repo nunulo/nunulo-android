@@ -49,6 +49,27 @@ class ApiTest {
     }
 
     @Test
+    fun albumPayloadAndParserKeepEditableMetadata() {
+        val payload = albumPayload("  MyGO!!!!! 现场  ", "  一起看过的演出  ", " FOLLOWERS ")
+        val parsed = parseAlbum(
+            JSONObject()
+                .put("id", "album-1")
+                .put("title", payload.getString("title"))
+                .put("description", payload.getString("description"))
+                .put("visibility", payload.getString("visibility"))
+                .put("item_count", 3)
+                .put("created_at", "2026-08-14T18:00:00Z"),
+        )
+
+        assertEquals(setOf("title", "description", "visibility"), payload.keys().asSequence().toSet())
+        assertEquals("MyGO!!!!! 现场", parsed.title)
+        assertEquals("一起看过的演出", parsed.description)
+        assertEquals("followers", parsed.visibility)
+        assertEquals(3, parsed.itemCount)
+        assertEquals("2026-08-14T18:00:00Z", parsed.createdAt)
+    }
+
+    @Test
     fun parsesMultiPhotoRecordRelationsPermissionsAndInteraction() {
         val record = parseCheckin(
             JSONObject()

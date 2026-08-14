@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -33,17 +35,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 @Composable
 internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Unit) {
     val user = controller.currentUser
     val uriHandler = LocalUriHandler.current
     var homeName by rememberSaveable { mutableStateOf(controller.footprint.home?.name ?: "家") }
-    var albumTitle by rememberSaveable { mutableStateOf("") }
     var section by rememberSaveable { mutableStateOf("footprint") }
     var homeDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     var blockingPersonId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var albumEditorOpen by rememberSaveable { mutableStateOf(false) }
+    var editingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
@@ -122,19 +129,22 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             }
         }
         if (section == "collection") item {
-            SectionCard("合集", "合集聚合记录，不承担分类权威。") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(albumTitle, { albumTitle = it }, label = { Text("新合集名称") }, singleLine = true, modifier = Modifier.weight(1f))
-                    Button(
-                        enabled = albumTitle.isNotBlank() && !controller.albumCreating,
-                        onClick = { controller.createAlbum(albumTitle) { albumTitle = "" } },
-                    ) { Text(if (controller.albumCreating) "创建中" else "创建") }
+            SectionCard("我的合集", "把想反复回看的记录收进一册；合集不会改变记录本身。") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${controller.albums.size} 本合集", color = NunuloColors.Muted, modifier = Modifier.weight(1f))
+                    Button(onClick = { editingAlbumId = null; albumEditorOpen = true }) { Text("创建合集") }
+                }
+                if (controller.albums.isEmpty()) {
+                    Text("还没有合集。可以先建立一本，再从记录详情加入照片记录。", color = NunuloColors.Muted)
                 }
                 controller.albums.forEach { album ->
-                    Row(Modifier.fillMaxWidth()) {
-                        Text(album.title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        Text("${album.itemCount} 条 · ${visibilityLabel(album.visibility)}", color = NunuloColors.Muted)
-                    }
+                    AlbumSummaryCard(
+                        album = album,
+                        opening = controller.albumOpeningId == album.id,
+                        onOpen = { controller.openAlbum(album) },
+                        onEdit = { editingAlbumId = album.id; albumEditorOpen = true },
+                        onDelete = { deletingAlbumId = album.id },
+                    )
                 }
             }
         }
@@ -194,6 +204,161 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 },
                 onDismiss = { blockingPersonId = null },
             )
+        }
+    }
+    if (albumEditorOpen) {
+        AlbumEditorDialog(
+            controller = controller,
+            initial = editingAlbumId?.let { id -> controller.albums.firstOrNull { it.id == id } },
+            onDismiss = { albumEditorOpen = false },
+        )
+    }
+    deletingAlbumId?.let { id ->
+        controller.albums.firstOrNull { it.id == id }?.let { album ->
+            ConfirmActionDialog(
+                title = "删除合集？",
+                body = "“${album.title}”和它的收录关系会被删除，原有记录、照片、评论和互动全部保留。",
+                confirmLabel = if (controller.albumDeletingId == album.id) "删除中" else "删除合集",
+                onConfirm = {
+                    if (controller.albumDeletingId == null) controller.deleteAlbum(album) { deletingAlbumId = null }
+                },
+                onDismiss = { if (controller.albumDeletingId == null) deletingAlbumId = null },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun AlbumSummaryCard(
+    album: AlbumItem,
+    opening: Boolean,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Surface(
+        color = NunuloColors.Lilac,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !opening, onClick = onOpen),
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecordStamp("集", NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text(album.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        album.description.ifBlank { "一本由你整理的照片记录册" },
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CoordinateTag("${album.itemCount} 条记录")
+                Spacer(Modifier.weight(1f))
+                CoordinateTag(visibilityLabel(album.visibility))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(enabled = !opening, onClick = onOpen) { Text(if (opening) "正在打开" else "打开合集") }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onEdit) { Text("编辑") }
+                TextButton(onClick = onDelete) { Text("删除", color = NunuloColors.Danger) }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun AlbumEditorDialog(
+    controller: NunuloController,
+    initial: AlbumItem?,
+    onDismiss: () -> Unit,
+) {
+    val saving = controller.albumSavingId != null
+    Dialog(onDismissRequest = { if (!saving) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        AlbumEditorPage(
+            initial = initial,
+            saving = saving,
+            onDismiss = onDismiss,
+            onSave = { id, title, description, visibility -> controller.saveAlbum(id, title, description, visibility, onSuccess = onDismiss) },
+        )
+    }
+}
+
+@Composable
+internal fun AlbumEditorPage(
+    initial: AlbumItem?,
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String?, String, String, String) -> Unit,
+) {
+    var title by rememberSaveable(initial?.id) { mutableStateOf(initial?.title.orEmpty()) }
+    var description by rememberSaveable(initial?.id) { mutableStateOf(initial?.description.orEmpty()) }
+    var visibility by rememberSaveable(initial?.id) { mutableStateOf(initial?.visibility ?: "private") }
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RecordStamp("集", NunuloColors.MapBlue)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text(if (initial == null) "创建合集" else "编辑合集", style = MaterialTheme.typography.titleMedium)
+                        Text("整理记录，不改变原内容", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(enabled = !saving, onClick = onDismiss) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("给这一册一个清楚的主题", style = MaterialTheme.typography.titleLarge)
+                        Text("演出、旅行或角色照片都可以独立整理，之后还能继续增减记录。", color = NunuloColors.Muted)
+                    }
+                }
+                item {
+                    SectionCard("合集资料") {
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text("合集名称") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = description,
+                            onValueChange = { description = it },
+                            label = { Text("说明（可选）") },
+                            minLines = 3,
+                            maxLines = 5,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                item {
+                    SectionCard("谁能看到", "合集可见性不会放宽其中记录原本的权限。") {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(listOf("private" to "仅自己", "followers" to "关注者", "public" to "所有成员")) { option ->
+                                FilterChip(selected = visibility == option.first, onClick = { visibility = option.first }, label = { Text(option.second) })
+                            }
+                        }
+                    }
+                }
+                item {
+                    Button(
+                        enabled = title.isNotBlank() && !saving,
+                        onClick = { onSave(initial?.id, title, description, visibility) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (saving) "正在保存" else if (initial == null) "创建合集" else "保存修改") }
+                }
+            }
         }
     }
 }

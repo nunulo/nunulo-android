@@ -25,8 +25,10 @@ internal data class RecordCollection(
     val subtitle: String = "",
     val filters: Map<String, String> = emptyMap(),
     val checkinIds: List<String> = emptyList(),
+    val explicitCheckinIds: Boolean = false,
     val event: EventItem? = null,
     val catalogEntity: CatalogEntityItem? = null,
+    val album: AlbumItem? = null,
 )
 
 internal class DetailRequestGate {
@@ -191,7 +193,13 @@ internal class NunuloController(
         private set
     var placeCreating by mutableStateOf(false)
         private set
-    var albumCreating by mutableStateOf(false)
+    var albumSavingId by mutableStateOf<String?>(null)
+        private set
+    var albumOpeningId by mutableStateOf<String?>(null)
+        private set
+    var albumDeletingId by mutableStateOf<String?>(null)
+        private set
+    var albumRemovingRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
@@ -620,7 +628,10 @@ internal class NunuloController(
         mutatingPartnerRelationKeys = emptySet()
         catalogCandidateCreating = false
         placeCreating = false
-        albumCreating = false
+        albumSavingId = null
+        albumOpeningId = null
+        albumDeletingId = null
+        albumRemovingRecordIds = emptySet()
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
@@ -671,7 +682,7 @@ internal class NunuloController(
         coroutineScope.launch {
             try {
                 val loaded = authed { token ->
-                    if (target.checkinIds.isNotEmpty()) {
+                    if (target.explicitCheckinIds) {
                         val results = target.checkinIds.map { id -> runCatching { api.getCheckin(apiBase, token, id) } }
                         results.firstNotNullOfOrNull { it.exceptionOrNull()?.takeIf(::looksLikeExpiredToken) }?.let { throw it }
                         val partial = results.successfulItems()
@@ -962,6 +973,49 @@ internal class NunuloController(
         }
     }
 
+    fun openAlbum(album: AlbumItem) {
+        if (albumOpeningId != null) return
+        albumOpeningId = album.id
+        coroutineScope.launch {
+            try {
+                val content = authed { token -> api.albumContent(apiBase, token, album.id) }
+                albums = albums.map { if (it.id == content.album.id) content.album else it }
+                openCollection(
+                    RecordCollection(
+                        title = content.album.title,
+                        subtitle = content.album.description,
+                        checkinIds = content.checkinIds,
+                        explicitCheckinIds = true,
+                        album = content.album,
+                    ),
+                )
+            } catch (error: Exception) {
+                message = error.message ?: "合集加载失败"
+            } finally {
+                albumOpeningId = null
+            }
+        }
+    }
+
+    fun removeFromAlbum(record: CheckinItem) {
+        val album = collection?.album ?: return
+        if (record.id in albumRemovingRecordIds) return
+        albumRemovingRecordIds = albumRemovingRecordIds + record.id
+        coroutineScope.launch {
+            try {
+                val updated = authed { token -> api.removeAlbumItem(apiBase, token, album.id, record.id) }
+                albums = albums.map { if (it.id == updated.id) updated else it }
+                collection = collection?.let { target -> if (target.album?.id == updated.id) target.copy(album = updated) else target }
+                feedItems = feedItems.filterNot { it.id == record.id }
+                message = "已从 ${album.title} 移除"
+            } catch (error: Exception) {
+                message = error.message ?: "移出合集失败"
+            } finally {
+                albumRemovingRecordIds = albumRemovingRecordIds - record.id
+            }
+        }
+    }
+
     fun savePartner(id: String?, name: String, itemTypeId: String, workId: String?, characterId: String?, visibility: String, onSuccess: () -> Unit = {}) {
         busy = true
         coroutineScope.launch {
@@ -1166,7 +1220,7 @@ internal class NunuloController(
     }
 
     fun openTopic(topic: TopicItem) {
-        openCollection(RecordCollection(topic.title, topic.description, checkinIds = topic.checkinIds))
+        openCollection(RecordCollection(topic.title, topic.description, checkinIds = topic.checkinIds, explicitCheckinIds = true))
     }
 
     fun openRegion(region: WorldRegionItem) {
@@ -1238,18 +1292,40 @@ internal class NunuloController(
         }
     }
 
-    fun createAlbum(title: String, onSuccess: () -> Unit = {}) {
-        if (albumCreating) return
-        albumCreating = true
+    fun saveAlbum(id: String?, title: String, description: String, visibility: String, onSuccess: () -> Unit = {}) {
+        if (albumSavingId != null) return
+        albumSavingId = id ?: "new"
         coroutineScope.launch {
             try {
-                albums = listOf(authed { token -> api.createAlbum(apiBase, token, title) }) + albums
-                message = "合集已创建"
+                val saved = authed { token -> api.saveAlbum(apiBase, token, id, title, description, visibility) }
+                albums = listOf(saved) + albums.filterNot { it.id == saved.id }
+                collection = collection?.let { target ->
+                    if (target.album?.id == saved.id) target.copy(title = saved.title, subtitle = saved.description, album = saved) else target
+                }
+                message = if (id == null) "合集已创建" else "合集已更新"
                 onSuccess()
             } catch (error: Exception) {
-                message = error.message ?: "合集创建失败"
+                message = error.message ?: "合集保存失败"
             } finally {
-                albumCreating = false
+                albumSavingId = null
+            }
+        }
+    }
+
+    fun deleteAlbum(album: AlbumItem, onSuccess: () -> Unit = {}) {
+        if (albumDeletingId != null) return
+        albumDeletingId = album.id
+        coroutineScope.launch {
+            try {
+                authed { token -> api.deleteAlbum(apiBase, token, album.id) }
+                albums = albums.filterNot { it.id == album.id }
+                if (collection?.album?.id == album.id) loadFeed()
+                message = "合集已删除，记录和照片仍然保留"
+                onSuccess()
+            } catch (error: Exception) {
+                message = error.message ?: "合集删除失败"
+            } finally {
+                albumDeletingId = null
             }
         }
     }
