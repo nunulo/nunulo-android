@@ -217,6 +217,10 @@ internal class NunuloController(
         if (tab == AppTab.Capture && draft.latitude.isBlank() && draft.longitude.isBlank()) requestLocation(LocationPurpose.Draft)
     }
 
+    fun consumeMessage(value: String) {
+        if (message == value) message = ""
+    }
+
     fun requestLocation(purpose: LocationPurpose) {
         pendingLocationPurpose = purpose
         if (!hasLocationPermission(context)) {

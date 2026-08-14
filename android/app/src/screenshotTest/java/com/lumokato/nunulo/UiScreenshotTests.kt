@@ -26,7 +26,7 @@ import com.android.tools.screenshot.PreviewTest
 @Composable
 private fun ScreenshotFrame(tab: AppTab, content: @Composable () -> Unit) {
     NunuloTheme {
-        Scaffold(topBar = { NunuloTopBar(tab, "", false, 0, {}, {}) }) { padding ->
+        Scaffold(topBar = { NunuloTopBar(tab, false, 0, {}, {}) }) { padding ->
             Surface(color = NunuloColors.Background, modifier = Modifier.padding(padding).fillMaxSize()) {
                 content()
             }

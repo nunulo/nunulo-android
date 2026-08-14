@@ -43,6 +43,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -146,11 +148,19 @@ private fun NunuloApp() {
             return@NunuloTheme
         }
 
+        val snackbarHostState = remember { SnackbarHostState() }
+        LaunchedEffect(controller.message) {
+            val nextMessage = controller.message
+            if (nextMessage.isNotBlank()) {
+                snackbarHostState.showSnackbar(nextMessage)
+                controller.consumeMessage(nextMessage)
+            }
+        }
+
         Scaffold(
             topBar = {
                 NunuloTopBar(
                     tab = controller.activeTab,
-                    message = controller.message,
                     busy = controller.busy,
                     unreadCount = controller.notifications.count { it.readAt == null },
                     onRefresh = controller::refreshAll,
@@ -158,6 +168,7 @@ private fun NunuloApp() {
                 )
             },
             bottomBar = { NunuloBottomBar(controller.activeTab, controller::selectTab) },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { padding ->
             Surface(color = NunuloColors.Background, modifier = Modifier.padding(padding).fillMaxSize()) {
                 when (controller.activeTab) {
@@ -228,24 +239,21 @@ internal fun InitialSyncScreen(
 }
 
 @Composable
-internal fun NunuloTopBar(tab: AppTab, message: String, busy: Boolean, unreadCount: Int, onRefresh: () -> Unit, onNotifications: () -> Unit) {
+internal fun NunuloTopBar(tab: AppTab, busy: Boolean, unreadCount: Int, onRefresh: () -> Unit, onNotifications: () -> Unit) {
     Surface(color = NunuloColors.Paper, shadowElevation = 1.dp) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                RecordStamp(if (tab == AppTab.Capture) "记" else "N", if (tab == AppTab.Discover) NunuloColors.MapBlue else NunuloColors.Coral)
-                Column(Modifier.padding(start = 10.dp).weight(1f)) {
-                    Text(tab.title, style = MaterialTheme.typography.titleLarge)
-                    Text(if (tab == AppTab.Capture) "此刻与伙伴在哪里" else "伙伴旅行记录册", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
-                }
-                Box(Modifier.size(44.dp).clickable(enabled = !busy, onClick = onRefresh), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = if (busy) "同步中" else "刷新", tint = if (busy) NunuloColors.Muted else NunuloColors.MapBlue)
-                }
-                Box(Modifier.size(44.dp).clickable(onClick = onNotifications), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知")
-                    if (unreadCount > 0) Badge(Modifier.align(Alignment.TopEnd)) { Text(unreadCount.coerceAtMost(99).toString()) }
-                }
+        Row(Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            RecordStamp(if (tab == AppTab.Capture) "记" else "N", if (tab == AppTab.Discover) NunuloColors.MapBlue else NunuloColors.Coral)
+            Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                Text(tab.title, style = MaterialTheme.typography.titleLarge)
+                Text(if (tab == AppTab.Capture) "此刻与伙伴在哪里" else "伙伴旅行记录册", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
             }
-            if (message.isNotBlank()) Text(message, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            Box(Modifier.size(44.dp).clickable(enabled = !busy, onClick = onRefresh), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Refresh, contentDescription = if (busy) "同步中" else "刷新", tint = if (busy) NunuloColors.Muted else NunuloColors.MapBlue)
+            }
+            Box(Modifier.size(44.dp).clickable(onClick = onNotifications), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.NotificationsNone, contentDescription = "通知")
+                if (unreadCount > 0) Badge(Modifier.align(Alignment.TopEnd)) { Text(unreadCount.coerceAtMost(99).toString()) }
+            }
         }
     }
 }
