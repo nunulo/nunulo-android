@@ -441,6 +441,7 @@ fun CommunityBrowseScreenshot() = ScreenshotFrame(AppTab.Profile) {
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     androidx.compose.material3.FilterChip(selected = true, onClick = {}, label = { Text("全部成员") })
                     androidx.compose.material3.FilterChip(selected = false, onClick = {}, label = { Text("已关注") })
+                    androidx.compose.material3.FilterChip(selected = false, onClick = {}, label = { Text("已屏蔽") })
                 }
                 Text("2 位成员", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                 screenshotPeople().forEach { person ->
@@ -450,9 +451,40 @@ fun CommunityBrowseScreenshot() = ScreenshotFrame(AppTab.Profile) {
                         onOpen = {},
                         onFollow = {},
                         onBlock = {},
+                        onUnblock = {},
+                        unblocking = false,
                         avatar = { ScreenshotPersonAvatar() },
                     )
                 }
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "community_blocked_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CommunityBlockedScreenshot() = ScreenshotFrame(AppTab.Profile) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ProfileSectionTabs("community", onSelect = {}) }
+        item {
+            SectionCard("已屏蔽成员", "你可以随时解除屏蔽；解除后不会自动恢复关注关系。") {
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    androidx.compose.material3.FilterChip(selected = false, onClick = {}, label = { Text("全部成员") })
+                    androidx.compose.material3.FilterChip(selected = false, onClick = {}, label = { Text("已关注") })
+                    androidx.compose.material3.FilterChip(selected = true, onClick = {}, label = { Text("已屏蔽") })
+                }
+                Text("屏蔽会让双方从彼此的成员列表和动态中隐藏。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                MemberSummaryCard(
+                    person = screenshotPeople().last().copy(blocked = true, following = false),
+                    following = false,
+                    onOpen = {},
+                    onFollow = {},
+                    onBlock = {},
+                    onUnblock = {},
+                    unblocking = false,
+                    avatar = { ScreenshotPersonAvatar() },
+                )
             }
         }
     }

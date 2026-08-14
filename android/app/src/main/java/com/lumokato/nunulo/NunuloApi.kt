@@ -48,6 +48,8 @@ internal data class PersonItem(
     val username: String?,
     val bio: String?,
     val following: Boolean,
+    val blocked: Boolean = false,
+    val status: String = "active",
     val avatarUrl: String? = null,
     val followerCount: Int = 0,
     val followingCount: Int = 0,
@@ -404,6 +406,10 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         executeJson(authorized(apiBase, "/api/users?limit=100", token).get().build()).getJSONArray("items").objectItems(::parsePerson)
     }
 
+    suspend fun listBlockedPeople(apiBase: String, token: String): List<PersonItem> = withContext(Dispatchers.IO) {
+        executeJson(authorized(apiBase, "/api/users/me/blocks", token).get().build()).getJSONArray("items").objectItems(::parsePerson)
+    }
+
     suspend fun getPerson(apiBase: String, token: String, personId: Int): PersonItem = withContext(Dispatchers.IO) {
         parsePerson(executeJson(authorized(apiBase, "/api/users/$personId", token).get().build()).getJSONObject("user"))
     }
@@ -425,6 +431,10 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
 
     suspend fun blockPerson(apiBase: String, token: String, personId: Int) = withContext(Dispatchers.IO) {
         executeJson(authorized(apiBase, "/api/users/$personId/block", token).post(emptyBody()).build())
+    }
+
+    suspend fun unblockPerson(apiBase: String, token: String, personId: Int) = withContext(Dispatchers.IO) {
+        executeJson(authorized(apiBase, "/api/users/$personId/block", token).delete().build())
     }
 
     suspend fun listAlbums(apiBase: String, token: String): List<AlbumItem> = withContext(Dispatchers.IO) {
@@ -559,6 +569,8 @@ internal fun parsePerson(json: JSONObject) = PersonItem(
     username = json.optionalString("username"),
     bio = json.optionalString("bio"),
     following = json.optBoolean("following"),
+    blocked = json.optBoolean("blocked"),
+    status = json.optString("status", "active"),
     avatarUrl = json.optionalString("avatar_url"),
     followerCount = json.optInt("follower_count"),
     followingCount = json.optInt("following_count"),

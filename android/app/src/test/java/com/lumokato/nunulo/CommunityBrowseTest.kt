@@ -36,17 +36,27 @@ class CommunityBrowseTest {
 
     @Test
     fun searchesDisplayNameUsernameAndBio() {
-        assertEquals(listOf(2), communityBrowseItems(people, "爱音", CommunityFollowFilter.All).map(PersonItem::id))
-        assertEquals(listOf(1), communityBrowseItems(people, "TOMORI", CommunityFollowFilter.All).map(PersonItem::id))
-        assertEquals(listOf(3, 1), communityBrowseItems(people, "演出", CommunityFollowFilter.All).map(PersonItem::id))
+        assertEquals(listOf(2), communityBrowseItems(people, "爱音", CommunityMemberFilter.All).map(PersonItem::id))
+        assertEquals(listOf(1), communityBrowseItems(people, "TOMORI", CommunityMemberFilter.All).map(PersonItem::id))
+        assertEquals(listOf(3, 1), communityBrowseItems(people, "演出", CommunityMemberFilter.All).map(PersonItem::id))
     }
 
     @Test
     fun followingFilterKeepsOnlyFollowedMembersAndUsesRealFollowerOrder() {
-        val result = communityBrowseItems(people, "", CommunityFollowFilter.Following)
+        val result = communityBrowseItems(people, "", CommunityMemberFilter.Following)
 
         assertEquals(listOf(3, 1), result.map(PersonItem::id))
         assertTrue(result.all(PersonItem::following))
+    }
+
+    @Test
+    fun blockedFilterKeepsOnlyBlockedMembersAndSearchesTheirProfile() {
+        val blocked = people[1].copy(blocked = true, status = "disabled")
+        val result = communityBrowseItems(people + blocked, "夜景", CommunityMemberFilter.Blocked)
+
+        assertEquals(listOf(blocked.id), result.map(PersonItem::id))
+        assertTrue(result.single().blocked)
+        assertEquals("disabled", result.single().status)
     }
 
     @Test
@@ -58,6 +68,8 @@ class CommunityBrowseTest {
                 .put("username", "member")
                 .put("bio", "一起去看演出")
                 .put("following", true)
+                .put("blocked", true)
+                .put("status", "disabled")
                 .put("avatar_url", "/api/assets/avatar/content")
                 .put("follower_count", 9)
                 .put("following_count", 4),
@@ -68,9 +80,13 @@ class CommunityBrowseTest {
         assertEquals(9, current.followerCount)
         assertEquals(4, current.followingCount)
         assertTrue(current.following)
+        assertTrue(current.blocked)
+        assertEquals("disabled", current.status)
         assertEquals(null, legacy.avatarUrl)
         assertEquals(0, legacy.followerCount)
         assertFalse(legacy.following)
+        assertFalse(legacy.blocked)
+        assertEquals("active", legacy.status)
     }
 
     @Test

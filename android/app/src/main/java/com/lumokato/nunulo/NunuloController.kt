@@ -121,6 +121,12 @@ internal class NunuloController(
         private set
     var people by mutableStateOf<List<PersonItem>>(emptyList())
         private set
+    var blockedPeople by mutableStateOf<List<PersonItem>>(emptyList())
+        private set
+    var blockedPeopleLoading by mutableStateOf(false)
+        private set
+    var blockedPeopleError by mutableStateOf<String?>(null)
+        private set
     var selectedPerson by mutableStateOf<PersonItem?>(null)
         private set
     var selectedPersonRecords by mutableStateOf<List<CheckinItem>>(emptyList())
@@ -216,6 +222,8 @@ internal class NunuloController(
         private set
     var followingPersonIds by mutableStateOf<Set<Int>>(emptySet())
         private set
+    var unblockingPersonIds by mutableStateOf<Set<Int>>(emptySet())
+        private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
     var syncError by mutableStateOf<String?>(null)
@@ -229,6 +237,7 @@ internal class NunuloController(
     private val partnerDetailRequests = DetailRequestGate()
     private val collectionRequests = DetailRequestGate()
     private val personProfileRequests = DetailRequestGate()
+    private var blockedPeopleLoaded = false
 
     internal val mediaApi: NunuloApi get() = api
     internal val baseUrl: String get() = apiBase
@@ -622,6 +631,10 @@ internal class NunuloController(
         footprint = FootprintState(null, emptyList())
         notifications = emptyList()
         people = emptyList()
+        blockedPeople = emptyList()
+        blockedPeopleLoading = false
+        blockedPeopleError = null
+        blockedPeopleLoaded = false
         selectedPerson = null
         clearPersonProfileState()
         albums = emptyList()
@@ -651,6 +664,7 @@ internal class NunuloController(
         albumDeletingId = null
         albumRemovingRecordIds = emptySet()
         followingPersonIds = emptySet()
+        unblockingPersonIds = emptySet()
         profileSaving = false
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
@@ -1387,11 +1401,57 @@ internal class NunuloController(
             try {
                 authed { token -> api.blockPerson(apiBase, token, person.id) }
                 people = people.filterNot { it.id == person.id }
+                followingPersonIds = followingPersonIds - person.id
+                if (blockedPeopleLoaded) {
+                    blockedPeople = (listOf(person.copy(following = false, blocked = true)) + blockedPeople)
+                        .distinctBy(PersonItem::id)
+                }
                 feedItems = feedItems.filterNot { it.userId == person.id }
                 if (selectedPerson?.id == person.id) closePersonProfile()
                 message = "已屏蔽 ${person.displayName}"
             } catch (error: Exception) {
                 message = error.message ?: "屏蔽失败"
+            }
+        }
+    }
+
+    fun loadBlockedPeople(force: Boolean = false) {
+        if (blockedPeopleLoading || blockedPeopleLoaded && !force) return
+        blockedPeopleLoading = true
+        blockedPeopleError = null
+        coroutineScope.launch {
+            try {
+                blockedPeople = authed { token -> api.listBlockedPeople(apiBase, token) }
+                    .map { it.copy(following = false, blocked = true) }
+                blockedPeopleLoaded = true
+            } catch (error: Exception) {
+                blockedPeopleError = if (error is ApiException && error.statusCode == 404) {
+                    "当前服务版本暂不支持查看已屏蔽成员"
+                } else {
+                    error.message ?: "已屏蔽成员加载失败"
+                }
+            } finally {
+                blockedPeopleLoading = false
+            }
+        }
+    }
+
+    fun unblockPerson(person: PersonItem) {
+        if (person.id in unblockingPersonIds) return
+        unblockingPersonIds = unblockingPersonIds + person.id
+        coroutineScope.launch {
+            try {
+                authed { token -> api.unblockPerson(apiBase, token, person.id) }
+                blockedPeople = blockedPeople.filterNot { it.id == person.id }
+                val refreshed = runCatching { authed { token -> api.listPeople(apiBase, token) } }
+                refreshed.onSuccess { people = it }
+                blockedPeopleLoaded = false
+                loadBlockedPeople(force = true)
+                message = "已解除对 ${person.displayName} 的屏蔽"
+            } catch (error: Exception) {
+                message = error.message ?: "解除屏蔽失败"
+            } finally {
+                unblockingPersonIds = unblockingPersonIds - person.id
             }
         }
     }

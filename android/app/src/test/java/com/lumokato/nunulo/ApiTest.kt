@@ -4,6 +4,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -29,6 +34,40 @@ class ApiTest {
         assertTrue(looksLikeExpiredToken(ApiException(401, "任何服务端消息")))
         assertFalse(looksLikeExpiredToken(ApiException(503, "token storage unavailable")))
         assertFalse(looksLikeExpiredToken(IllegalStateException("HTTP 401")))
+    }
+
+    @Test
+    fun blockedPeopleAndUnblockUseDedicatedAuthenticatedRoutes() = runBlocking {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            requests += Triple(request.method, request.url.encodedPath, request.header("Authorization"))
+            val json = if (request.method == "GET") {
+                """{"items":[{"id":12,"display_name":"爱音今天也出门","following":false,"blocked":true,"status":"active"}]}"""
+            } else {
+                """{"blocked":false,"user_id":12}"""
+            }
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        val api = NunuloApi(client)
+
+        val blocked = api.listBlockedPeople("https://nunulo.test", "token")
+        api.unblockPerson("https://nunulo.test", "token", blocked.single().id)
+
+        assertTrue(blocked.single().blocked)
+        assertEquals(
+            listOf(
+                Triple("GET", "/api/users/me/blocks", "Bearer token"),
+                Triple("DELETE", "/api/users/12/block", "Bearer token"),
+            ),
+            requests,
+        )
     }
 
     @Test

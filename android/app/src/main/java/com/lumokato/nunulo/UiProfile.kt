@@ -42,19 +42,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
-internal enum class CommunityFollowFilter(val label: String) {
+internal enum class CommunityMemberFilter(val label: String) {
     All("全部成员"),
     Following("已关注"),
+    Blocked("已屏蔽"),
 }
 
 internal fun communityBrowseItems(
     people: List<PersonItem>,
     query: String,
-    followFilter: CommunityFollowFilter,
+    memberFilter: CommunityMemberFilter,
 ): List<PersonItem> {
     val term = query.trim().lowercase()
     return people.asSequence()
-        .filter { followFilter == CommunityFollowFilter.All || it.following }
+        .filter { person ->
+            when (memberFilter) {
+                CommunityMemberFilter.All -> !person.blocked
+                CommunityMemberFilter.Following -> person.following && !person.blocked
+                CommunityMemberFilter.Blocked -> person.blocked
+            }
+        }
         .filter { person ->
             term.isBlank() || listOf(person.displayName, person.username.orEmpty(), person.bio.orEmpty())
                 .any { value -> value.lowercase().contains(term) }
@@ -78,7 +85,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     var editingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingAlbumId by rememberSaveable { mutableStateOf<String?>(null) }
     var communityQuery by rememberSaveable { mutableStateOf("") }
-    var communityFollowFilterName by rememberSaveable { mutableStateOf(CommunityFollowFilter.All.name) }
+    var communityMemberFilterName by rememberSaveable { mutableStateOf(CommunityMemberFilter.All.name) }
     var profileEditorOpen by rememberSaveable { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -179,8 +186,9 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             }
         }
         if (section == "community") item {
-            val followFilter = runCatching { CommunityFollowFilter.valueOf(communityFollowFilterName) }.getOrDefault(CommunityFollowFilter.All)
-            val visiblePeople = communityBrowseItems(controller.people, communityQuery, followFilter)
+            val memberFilter = runCatching { CommunityMemberFilter.valueOf(communityMemberFilterName) }.getOrDefault(CommunityMemberFilter.All)
+            val sourcePeople = if (memberFilter == CommunityMemberFilter.Blocked) controller.blockedPeople else controller.people
+            val visiblePeople = communityBrowseItems(sourcePeople, communityQuery, memberFilter)
             SectionCard("社区成员", "找到正在记录同一作品、角色与旅程的人。关注后，他们的新记录会进入关注动态。") {
                 OutlinedTextField(
                     value = communityQuery,
@@ -190,16 +198,37 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                     modifier = Modifier.fillMaxWidth(),
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    items(CommunityFollowFilter.entries) { option ->
+                    items(CommunityMemberFilter.entries) { option ->
                         FilterChip(
-                            selected = followFilter == option,
-                            onClick = { communityFollowFilterName = option.name },
+                            selected = memberFilter == option,
+                            onClick = {
+                                communityMemberFilterName = option.name
+                                if (option == CommunityMemberFilter.Blocked) controller.loadBlockedPeople()
+                            },
                             label = { Text(option.label) },
                         )
                     }
                 }
+                if (memberFilter == CommunityMemberFilter.Blocked) {
+                    Text(
+                        "屏蔽会让双方从彼此的成员列表和动态中隐藏。解除后不会自动恢复关注关系。",
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (controller.blockedPeopleLoading || controller.blockedPeopleError != null) {
+                        DetailLoadState(
+                            title = if (controller.blockedPeopleLoading) "正在读取已屏蔽成员" else "已屏蔽成员没有加载完整",
+                            detail = "普通成员列表与其他个人内容不受影响。",
+                            loading = controller.blockedPeopleLoading,
+                            error = controller.blockedPeopleError,
+                            onRetry = { controller.loadBlockedPeople(force = true) },
+                        )
+                    }
+                }
                 Text("${visiblePeople.size} 位成员", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                if (controller.people.isEmpty()) {
+                if (memberFilter == CommunityMemberFilter.Blocked && !controller.blockedPeopleLoading && controller.blockedPeopleError == null && controller.blockedPeople.isEmpty()) {
+                    Text("没有已屏蔽的成员。", color = NunuloColors.Muted)
+                } else if (memberFilter != CommunityMemberFilter.Blocked && controller.people.isEmpty()) {
                     Text("暂无其他成员。新成员加入后会出现在这里。", color = NunuloColors.Muted)
                 } else if (visiblePeople.isEmpty()) {
                     Text("没有匹配的成员。可以换个名字、用户名或简介关键词。", color = NunuloColors.Muted)
@@ -211,6 +240,8 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                         onOpen = { controller.selectPerson(person) },
                         onFollow = { controller.toggleFollow(person) },
                         onBlock = { blockingPersonId = person.id },
+                        onUnblock = { controller.unblockPerson(person) },
+                        unblocking = person.id in controller.unblockingPersonIds,
                         avatar = { PersonAvatar(person, controller.baseUrl, controller.mediaApi) },
                     )
                 }
@@ -332,13 +363,15 @@ internal fun MemberSummaryCard(
     onOpen: () -> Unit,
     onFollow: () -> Unit,
     onBlock: () -> Unit,
+    onUnblock: () -> Unit,
+    unblocking: Boolean,
     avatar: @Composable () -> Unit,
 ) {
     Surface(
         color = if (person.following) NunuloColors.Soft else Color.White,
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, NunuloColors.Hairline),
-        modifier = Modifier.fillMaxWidth().clickable(enabled = !following, onClick = onOpen),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !following && !person.blocked, onClick = onOpen),
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -347,13 +380,18 @@ internal fun MemberSummaryCard(
                     Text(person.displayName, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     person.username?.let { Text("@$it", color = NunuloColors.MapBlue, style = MaterialTheme.typography.bodySmall) }
                     Text(person.bio?.takeIf(String::isNotBlank) ?: "还没有填写简介", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (person.status != "active") Text("账号已停用", color = NunuloColors.Danger, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CoordinateTag("${person.followerCount} 位关注者")
                 Spacer(Modifier.weight(1f))
-                TextButton(enabled = !following, onClick = onFollow) { Text(if (following) "处理中" else if (person.following) "取消关注" else "关注") }
-                TextButton(enabled = !following, onClick = onBlock) { Text("屏蔽", color = NunuloColors.Danger) }
+                if (person.blocked) {
+                    TextButton(enabled = !unblocking, onClick = onUnblock) { Text(if (unblocking) "解除中" else "解除屏蔽") }
+                } else {
+                    TextButton(enabled = !following, onClick = onFollow) { Text(if (following) "处理中" else if (person.following) "取消关注" else "关注") }
+                    TextButton(enabled = !following, onClick = onBlock) { Text("屏蔽", color = NunuloColors.Danger) }
+                }
             }
         }
     }
