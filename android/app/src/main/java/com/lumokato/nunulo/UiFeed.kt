@@ -83,8 +83,20 @@ internal fun FeedScreen(controller: NunuloController) {
                 )
             }
         }
+        if (controller.collectionLoading || controller.collectionError != null) {
+            item {
+                DetailLoadState(
+                    title = if (controller.collectionLoading) "正在整理聚合记录" else "聚合记录没有加载完整",
+                    detail = "只显示当前聚合中的记录，不会混入上一页动态。",
+                    loading = controller.collectionLoading,
+                    error = controller.collectionError,
+                    onRetry = controller::reloadCollection,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
         if (controller.feedItems.isEmpty()) {
-            if (controller.screenError(AppTab.Feed) == null) {
+            if (controller.screenError(AppTab.Feed) == null && !controller.collectionLoading && controller.collectionError == null) {
                 item { Box(Modifier.padding(horizontal = 12.dp)) { EmptyState("这里还没有内容", "先发布第一条照片记录，或关注作品、角色和伙伴。") } }
             }
         }

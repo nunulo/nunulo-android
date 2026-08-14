@@ -29,4 +29,16 @@ class PartialLoadTest {
 
         assertEquals("伙伴加载失败", loaded.error)
     }
+
+    @Test
+    fun aggregateKeepsSuccessfulRecordsAndCountsFailures() {
+        val failure = IllegalStateException("记录已隐藏")
+
+        val partial = listOf(Result.success("record-1"), Result.failure(failure), Result.success("record-3"))
+            .successfulItems()
+
+        assertEquals(listOf("record-1", "record-3"), partial.items)
+        assertEquals(1, partial.failedCount)
+        assertEquals(failure, partial.firstError)
+    }
 }

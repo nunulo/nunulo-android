@@ -47,6 +47,14 @@ internal fun <T> Result<T>.withFallback(fallback: T, failureLabel: String): Load
     onFailure = { LoadedPart(fallback, it.message?.takeIf(String::isNotBlank) ?: failureLabel) },
 )
 
+internal data class PartialItems<T>(val items: List<T>, val failedCount: Int, val firstError: Throwable?)
+
+internal fun <T> List<Result<T>>.successfulItems(): PartialItems<T> = PartialItems(
+    items = mapNotNull(Result<T>::getOrNull),
+    failedCount = count(Result<T>::isFailure),
+    firstError = firstNotNullOfOrNull(Result<T>::exceptionOrNull),
+)
+
 private data class LoadedState(
     val user: AuthUser,
     val feed: List<CheckinItem>,
@@ -140,6 +148,10 @@ internal class NunuloController(
         private set
     var collection by mutableStateOf<RecordCollection?>(null)
         private set
+    var collectionLoading by mutableStateOf(false)
+        private set
+    var collectionError by mutableStateOf<String?>(null)
+        private set
     var notificationsOpen by mutableStateOf(false)
     var draft by mutableStateOf(UploadDraft())
         private set
@@ -171,6 +183,7 @@ internal class NunuloController(
     private var pendingDeleteId by mutableStateOf("")
     private val recordDetailRequests = DetailRequestGate()
     private val partnerDetailRequests = DetailRequestGate()
+    private val collectionRequests = DetailRequestGate()
 
     internal val mediaApi: NunuloApi get() = api
     internal val baseUrl: String get() = apiBase
@@ -316,6 +329,7 @@ internal class NunuloController(
         eventSeries = state.eventSeries
         screenErrors = state.screenErrors
         notificationsError = state.notificationsError
+        clearCollectionLoadState()
         collection = null
         stateReady = true
     }
@@ -568,6 +582,7 @@ internal class NunuloController(
         selectedPartner = null
         clearPartnerDetailState()
         collection = null
+        clearCollectionLoadState()
         syncError = null
         screenErrors = emptyMap()
         notificationsError = null
@@ -580,6 +595,7 @@ internal class NunuloController(
         feedScope = nextScope
         feedOrder = nextOrder
         collection = null
+        clearCollectionLoadState()
         preferences.edit().putString("feedScope", nextScope.name).putString("feedOrder", nextOrder.name).apply()
         busy = true
         coroutineScope.launch {
@@ -598,25 +614,59 @@ internal class NunuloController(
     }
 
     fun openCollection(target: RecordCollection) {
+        selectedRecord = null
+        clearRecordDetailState()
+        selectedPartner = null
+        clearPartnerDetailState()
         collection = target
         selectTab(AppTab.Feed)
+        feedItems = emptyList()
+        loadCollection(target)
+    }
+
+    fun reloadCollection() {
+        collection?.let(::loadCollection)
+    }
+
+    private fun loadCollection(target: RecordCollection) {
+        val requestVersion = collectionRequests.next()
+        collectionLoading = true
+        collectionError = null
         busy = true
         coroutineScope.launch {
             try {
-                feedItems = authed { token ->
+                val loaded = authed { token ->
                     if (target.checkinIds.isNotEmpty()) {
-                        target.checkinIds.mapNotNull { id -> runCatching { api.getCheckin(apiBase, token, id) }.getOrNull() }
+                        val results = target.checkinIds.map { id -> runCatching { api.getCheckin(apiBase, token, id) } }
+                        results.firstNotNullOfOrNull { it.exceptionOrNull()?.takeIf(::looksLikeExpiredToken) }?.let { throw it }
+                        val partial = results.successfulItems()
+                        if (partial.items.isEmpty() && partial.firstError != null) throw partial.firstError
+                        partial
                     } else {
-                        api.listCheckins(apiBase, token, FeedScope.Discover, FeedOrder.Latest, target.filters)
+                        PartialItems(api.listCheckins(apiBase, token, FeedScope.Discover, FeedOrder.Latest, target.filters), 0, null)
                     }
                 }
+                if (!collectionRequests.isCurrent(requestVersion, collection?.title, target.title)) return@launch
+                feedItems = loaded.items
+                if (loaded.failedCount > 0) collectionError = "${loaded.failedCount} 条记录暂时无法读取；已显示其余内容"
                 message = "已打开 ${target.title}"
             } catch (error: Exception) {
-                message = error.message ?: "聚合内容加载失败"
+                if (!collectionRequests.isCurrent(requestVersion, collection?.title, target.title)) return@launch
+                collectionError = error.message ?: "聚合内容加载失败"
+                message = collectionError.orEmpty()
             } finally {
-                busy = false
+                if (collectionRequests.isCurrent(requestVersion, collection?.title, target.title)) {
+                    collectionLoading = false
+                    busy = false
+                }
             }
         }
+    }
+
+    private fun clearCollectionLoadState() {
+        collectionRequests.invalidate()
+        collectionLoading = false
+        collectionError = null
     }
 
     fun openRecord(record: CheckinItem) {

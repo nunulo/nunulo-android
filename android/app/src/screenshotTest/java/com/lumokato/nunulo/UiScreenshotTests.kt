@@ -85,6 +85,36 @@ fun FeedOfflineScreenshot() = ScreenshotFrame(AppTab.Feed) {
 }
 
 @PreviewTest
+@Preview(name = "collection_partial_failure_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CollectionPartialFailureScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("BanG Dream! 少女乐团派对！", "作品聚合") {
+                Text("已加载 1 条记录", color = NunuloColors.Muted)
+            }
+        }
+        item {
+            DetailLoadState(
+                title = "聚合记录没有加载完整",
+                detail = "只显示当前聚合中的记录，不会混入上一页动态。",
+                loading = false,
+                error = "2 条记录暂时无法读取；已显示其余内容",
+                onRetry = {},
+            )
+        }
+        item {
+            FeedRecordCard(
+                record = screenshotRecord(),
+                onOpen = {},
+                onLike = {},
+                image = { ScreenshotMedia("当前作品记录") },
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_partial_failure_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CapturePartialFailureScreenshot() = ScreenshotFrame(AppTab.Capture) {
