@@ -1,6 +1,8 @@
 package com.lumokato.nunulo
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -135,6 +137,12 @@ internal class NunuloController(
     var avatarUri by mutableStateOf<Uri?>(null)
         private set
     var inviteCode by mutableStateOf("")
+        private set
+    var exportCreating by mutableStateOf(false)
+        private set
+    var exportDownloadingId by mutableStateOf<String?>(null)
+        private set
+    var inviteCreating by mutableStateOf(false)
         private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
@@ -952,18 +960,24 @@ internal class NunuloController(
     }
 
     fun createExport() {
+        if (exportCreating) return
+        exportCreating = true
         coroutineScope.launch {
             try {
                 val created = authed { token -> api.createExport(apiBase, token) }
                 exports = listOf(created) + exports.filterNot { it.id == created.id }
-                message = "个人数据导出已生成"
+                message = if (created.canDownload()) "个人数据导出已可保存" else "个人数据导出任务已创建"
             } catch (error: Exception) {
                 message = error.message ?: "导出失败"
+            } finally {
+                exportCreating = false
             }
         }
     }
 
     fun downloadExport(record: ExportItem) {
+        if (!record.canDownload() || exportDownloadingId != null) return
+        exportDownloadingId = record.id
         coroutineScope.launch {
             try {
                 val uri = authed { token -> api.downloadExport(context, apiBase, token, record) }
@@ -972,21 +986,48 @@ internal class NunuloController(
                     putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }, "保存或分享 Nunulo 数据导出"))
+                message = "已打开保存与分享菜单"
             } catch (error: Exception) {
                 message = error.message ?: "导出下载失败"
+            } finally {
+                exportDownloadingId = null
             }
         }
     }
 
     fun createInvite() {
+        if (inviteCreating) return
+        inviteCreating = true
         coroutineScope.launch {
             try {
                 inviteCode = authed { token -> api.createInvite(apiBase, token) }
                 message = "个人邀请码已生成"
             } catch (error: Exception) {
                 message = error.message ?: "邀请码生成失败"
+            } finally {
+                inviteCreating = false
             }
         }
+    }
+
+    fun copyInvite() {
+        if (inviteCode.isBlank()) return
+        message = runCatching {
+            context.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("Nunulo 邀请码", inviteCode))
+            "邀请码已复制"
+        }.getOrElse { "邀请码复制失败" }
+    }
+
+    fun shareInvite() {
+        if (inviteCode.isBlank()) return
+        message = runCatching {
+            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, "Nunulo 邀请码：$inviteCode\n注册：${resolveAssetUrl(apiBase, "/app/")}")
+            }, "分享 Nunulo 邀请码"))
+            "已打开邀请码分享菜单"
+        }.getOrElse { "当前设备没有可用的分享应用" }
     }
 
     fun uploadAvatar(uri: Uri) {

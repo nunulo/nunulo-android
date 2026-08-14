@@ -139,22 +139,18 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
             }
         }
         if (section == "data") item {
-            SectionCard("数据与邀请", "导出包含照片资产、记录照片关系、伙伴、类别、活动和地点关系。") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = controller::createExport) { Text("生成数据导出") }
-                    TextButton(onClick = controller::createInvite) { Text("生成邀请码") }
-                }
-                if (controller.inviteCode.isNotBlank()) Text("邀请码：${controller.inviteCode}", color = NunuloColors.Coral, fontWeight = FontWeight.Bold)
-                controller.exports.forEach { export ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("导出 ${shortDate(export.createdAt)}", fontWeight = FontWeight.Bold)
-                            Text(export.status, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                        }
-                        TextButton(onClick = { controller.downloadExport(export) }) { Text("下载") }
-                    }
-                }
-            }
+            DataAndInviteSection(
+                exports = controller.exports,
+                inviteCode = controller.inviteCode,
+                exportCreating = controller.exportCreating,
+                exportDownloadingId = controller.exportDownloadingId,
+                inviteCreating = controller.inviteCreating,
+                onCreateExport = controller::createExport,
+                onDownloadExport = controller::downloadExport,
+                onCreateInvite = controller::createInvite,
+                onCopyInvite = controller::copyInvite,
+                onShareInvite = controller::shareInvite,
+            )
         }
     }
     if (homeDeleteConfirm) {
@@ -184,6 +180,84 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
         }
     }
 }
+
+@Composable
+internal fun DataAndInviteSection(
+    exports: List<ExportItem>,
+    inviteCode: String,
+    exportCreating: Boolean,
+    exportDownloadingId: String?,
+    inviteCreating: Boolean,
+    onCreateExport: () -> Unit,
+    onDownloadExport: (ExportItem) -> Unit,
+    onCreateInvite: () -> Unit,
+    onCopyInvite: () -> Unit,
+    onShareInvite: () -> Unit,
+) {
+    SectionCard("数据与邀请", "导出包含照片资产、记录照片关系、伙伴、类别、活动和地点关系。") {
+        Button(enabled = !exportCreating, onClick = onCreateExport, modifier = Modifier.fillMaxWidth()) {
+            Text(if (exportCreating) "正在生成导出" else "生成新的数据导出")
+        }
+        if (exports.isEmpty()) {
+            Text("还没有导出文件。生成后可以保存到本机或分享给自己的备份工具。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        exports.forEach { export ->
+            Surface(color = NunuloColors.Lilac, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("导出 ${exportCreatedLabel(export)}", fontWeight = FontWeight.Bold)
+                        Text(exportStatusLabel(export.status), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(
+                        enabled = export.canDownload() && exportDownloadingId == null,
+                        onClick = { onDownloadExport(export) },
+                    ) {
+                        Text(
+                            when {
+                                exportDownloadingId == export.id -> "准备中"
+                                export.canDownload() -> "保存或分享"
+                                else -> "暂不可用"
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        androidx.compose.material3.HorizontalDivider(color = NunuloColors.Hairline)
+        Text("邀请成员", fontWeight = FontWeight.Bold)
+        Text("邀请码只发给你认识的人；生成新邀请码不会自动公开。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        if (inviteCode.isBlank()) {
+            TextButton(enabled = !inviteCreating, onClick = onCreateInvite, modifier = Modifier.fillMaxWidth()) {
+                Text(if (inviteCreating) "正在生成邀请码" else "生成邀请码")
+            }
+        } else {
+            Surface(color = NunuloColors.Soft, shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("本次邀请码", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    Text(inviteCode, color = NunuloColors.CoralDeep, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = onCopyInvite) { Text("复制") }
+                        TextButton(onClick = onShareInvite) { Text("分享") }
+                        TextButton(enabled = !inviteCreating, onClick = onCreateInvite) { Text(if (inviteCreating) "生成中" else "再生成一个") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun ExportItem.canDownload(): Boolean = status.lowercase() in setOf("available", "ready", "completed")
+
+internal fun exportStatusLabel(status: String): String = when (status.lowercase()) {
+    "available", "ready", "completed" -> "可以保存或分享"
+    "queued", "pending", "processing", "generating" -> "正在生成"
+    "failed", "error" -> "生成失败，请重新生成"
+    "expired" -> "已过期，请重新生成"
+    else -> status.ifBlank { "状态未知" }
+}
+
+internal fun exportCreatedLabel(export: ExportItem): String =
+    export.createdAt?.take(16)?.replace('T', ' ')?.takeIf(String::isNotBlank) ?: export.id.take(8)
 
 @Composable
 internal fun ProfileSectionTabs(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {

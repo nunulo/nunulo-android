@@ -288,6 +288,31 @@ fun ProfileOwnerScreenshot() = ScreenshotFrame(AppTab.Profile) {
 }
 
 @PreviewTest
+@Preview(name = "profile_data_ready_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun ProfileDataReadyScreenshot() = ScreenshotFrame(AppTab.Profile) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            DataAndInviteSection(
+                exports = listOf(
+                    ExportItem("export-ready", "available", "2026-08-14T12:00:00Z", "/api/exports/export-ready/download"),
+                    ExportItem("export-pending", "processing", "2026-08-14T11:40:00Z", null),
+                ),
+                inviteCode = "NUNULO-7K3M9P",
+                exportCreating = false,
+                exportDownloadingId = null,
+                inviteCreating = false,
+                onCreateExport = {},
+                onDownloadExport = {},
+                onCreateInvite = {},
+                onCopyInvite = {},
+                onShareInvite = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "auth_login_360x800", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun AuthLoginScreenshot() = NunuloTheme {
