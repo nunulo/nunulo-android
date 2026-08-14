@@ -6,21 +6,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +34,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import java.time.OffsetDateTime
 
 @Composable
 internal fun DiscoveryScreen(controller: NunuloController) {
@@ -193,58 +197,119 @@ private fun EventEditorDialog(controller: NunuloController, initial: EventItem?,
     var description by rememberSaveable(initial?.id) { mutableStateOf(initial?.description.orEmpty()) }
     var placeName by rememberSaveable { mutableStateOf("") }
     val offline = type.startsWith("offline_")
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "创建活动" else "编辑活动") },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { OutlinedTextField(name, { name = it }, label = { Text("活动名称") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item {
-                    Text("活动类型", fontWeight = FontWeight.Bold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(listOf("offline_live" to "线下 Live", "offline_meetup" to "小团体面基", "online_birthday" to "线上生日合集")) { option ->
-                            FilterChip(selected = type == option.first, onClick = { type = option.first; if (!type.startsWith("offline_")) placeId = "" }, label = { Text(option.second) })
+    val timeError = eventTimeRangeError(startsAt, endsAt)
+    val canSave = name.isNotBlank() && (!offline || placeId.isNotBlank()) && timeError == null && !controller.busy
+    val save = {
+        controller.saveEvent(initial?.id, name, type, visibility, placeId.takeIf(String::isNotBlank), seriesId.takeIf(String::isNotBlank), startsAt.takeIf(String::isNotBlank), endsAt.takeIf(String::isNotBlank), description)
+        onDismiss()
+    }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+            Column {
+                Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = onDismiss) { Text("取消") }
+                        Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                            Text(if (initial == null) "创建活动" else "编辑活动", style = MaterialTheme.typography.titleMedium)
+                            Text("活动把同一时间与地点的记录收在一起", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
                         }
+                        Button(enabled = canSave, onClick = save) { Text(if (controller.busy) "保存中" else "保存") }
                     }
                 }
-                item {
-                    Text("可见性", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(selected = visibility == "public", onClick = { visibility = "public" }, label = { Text("公开") })
-                        FilterChip(selected = visibility == "private", onClick = { visibility = "private" }, label = { Text("私人小团体") })
-                    }
-                }
-                if (offline) {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(12.dp),
+                    modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(androidx.compose.ui.Alignment.CenterHorizontally),
+                ) {
                     item {
-                        Text("单一地点", fontWeight = FontWeight.Bold)
-                        if (controller.places.isEmpty()) Text("尚无地点，可用当前位置创建。", color = NunuloColors.Muted)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(controller.places, key = { it.id }) { place -> FilterChip(selected = placeId == place.id, onClick = { placeId = place.id }, label = { Text(place.name) }) }
+                        Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(if (initial == null) "这次一起去哪里？" else "更新活动信息", style = MaterialTheme.typography.titleLarge)
+                            Text("先说明活动类型，再补时间和地点；发布记录时就能直接关联。", color = NunuloColors.Muted)
                         }
-                        controller.currentLocation?.let { location ->
-                            OutlinedTextField(placeName, { placeName = it }, label = { Text("当前位置名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                            TextButton(enabled = placeName.isNotBlank(), onClick = { controller.createPlace(placeName, location.latitude, location.longitude) }) { Text("保存当前位置为活动地点") }
-                        } ?: TextButton(onClick = { controller.requestLocation(LocationPurpose.Place) }) { Text("获取当前位置") }
+                    }
+                    item {
+                        SectionCard("基本信息", "名称、类型和可见范围会显示在活动页。") {
+                            OutlinedTextField(name, { name = it }, label = { Text("活动名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Text("活动类型", fontWeight = FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(listOf("offline_live" to "线下 Live", "offline_meetup" to "小团体面基", "online_birthday" to "线上生日合集")) { option ->
+                                    FilterChip(
+                                        selected = type == option.first,
+                                        onClick = {
+                                            type = option.first
+                                            if (!type.startsWith("offline_")) placeId = ""
+                                        },
+                                        label = { Text(option.second) },
+                                    )
+                                }
+                            }
+                            Text("谁能看到", fontWeight = FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item { FilterChip(selected = visibility == "public", onClick = { visibility = "public" }, label = { Text("所有成员") }) }
+                                item { FilterChip(selected = visibility == "private", onClick = { visibility = "private" }, label = { Text("私人小团体") }) }
+                            }
+                        }
+                    }
+                    if (offline) {
+                        item {
+                            SectionCard("活动地点", "线下活动只关联一个地点；照片仍可保留各自的拍摄坐标。") {
+                                if (controller.places.isEmpty()) Text("还没有保存过地点。先获取当前位置并给它起一个容易辨认的名称。", color = NunuloColors.Muted)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(controller.places, key = { it.id }) { place ->
+                                        FilterChip(selected = placeId == place.id, onClick = { placeId = place.id }, label = { Text(place.name) })
+                                    }
+                                }
+                                controller.currentLocation?.let { location ->
+                                    CoordinateTag(formatCoordinate(location.latitude, location.longitude))
+                                    OutlinedTextField(placeName, { placeName = it }, label = { Text("当前位置名称") }, placeholder = { Text("例如：北京工人体育场北门") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                                    Button(enabled = placeName.isNotBlank(), onClick = { controller.createPlace(placeName, location.latitude, location.longitude) }, modifier = Modifier.fillMaxWidth()) { Text("保存为活动地点") }
+                                } ?: Button(onClick = { controller.requestLocation(LocationPurpose.Place) }, modifier = Modifier.fillMaxWidth()) { Text("获取当前位置") }
+                                if (placeId.isBlank()) Text("选择或创建一个地点后才能保存线下活动。", color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    item {
+                        EventScheduleSection(startsAt, endsAt, timeError, onStartChange = { startsAt = it }, onEndChange = { endsAt = it })
+                    }
+                    item {
+                        SectionCard("系列与说明", "系列用于把同一巡演或长期企划串联起来。") {
+                            Text("活动系列（选填）", fontWeight = FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item { FilterChip(selected = seriesId.isBlank(), onClick = { seriesId = "" }, label = { Text("无系列") }) }
+                                items(controller.eventSeries, key = { it.id }) { series ->
+                                    FilterChip(selected = seriesId == series.id, onClick = { seriesId = series.id }, label = { Text(series.canonicalName) })
+                                }
+                            }
+                            OutlinedTextField(description, { description = it }, label = { Text("活动说明") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                        }
                     }
                 }
-                item {
-                    Text("活动系列（选填）", fontWeight = FontWeight.Bold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { FilterChip(selected = seriesId.isBlank(), onClick = { seriesId = "" }, label = { Text("无系列") }) }
-                        items(controller.eventSeries, key = { it.id }) { series -> FilterChip(selected = seriesId == series.id, onClick = { seriesId = series.id }, label = { Text(series.canonicalName) }) }
-                    }
-                }
-                item { OutlinedTextField(startsAt, { startsAt = it }, label = { Text("开始时间 ISO（选填）") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(endsAt, { endsAt = it }, label = { Text("结束时间 ISO（选填）") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(description, { description = it }, label = { Text("说明") }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = name.isNotBlank() && (!offline || placeId.isNotBlank()) && !controller.busy, onClick = {
-                controller.saveEvent(initial?.id, name, type, visibility, placeId.takeIf(String::isNotBlank), seriesId.takeIf(String::isNotBlank), startsAt.takeIf(String::isNotBlank), endsAt.takeIf(String::isNotBlank), description)
-                onDismiss()
-            }) { Text("保存") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+    }
+}
+
+@Composable
+internal fun EventScheduleSection(
+    startsAt: String,
+    endsAt: String,
+    timeError: String?,
+    onStartChange: (String) -> Unit,
+    onEndChange: (String) -> Unit,
+) {
+    SectionCard("活动时间", "开始和结束时间都可以不填；填写结束时间时必须晚于开始时间。") {
+        DateTimeField("开始时间", startsAt, "尚未设置开始时间", "清除开始时间", onChange = onStartChange)
+        DateTimeField("结束时间", endsAt, "尚未设置结束时间", "清除结束时间", onChange = onEndChange)
+        timeError?.let { Text(it, color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+internal fun eventTimeRangeError(startsAt: String, endsAt: String): String? {
+    if (startsAt.isBlank() || endsAt.isBlank()) return null
+    val start = runCatching { OffsetDateTime.parse(startsAt).toInstant() }.getOrNull() ?: return "开始时间格式无效，请重新选择。"
+    val end = runCatching { OffsetDateTime.parse(endsAt).toInstant() }.getOrNull() ?: return "结束时间格式无效，请重新选择。"
+    return if (!end.isAfter(start)) "结束时间必须晚于开始时间。" else null
 }

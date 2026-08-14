@@ -1,5 +1,7 @@
 package com.lumokato.nunulo
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.compose.foundation.Image
@@ -62,6 +64,10 @@ import com.amap.api.maps.model.BitmapDescriptorFactory
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.LatLngBounds
 import com.amap.api.maps.model.MarkerOptions
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 internal object NunuloColors {
     val Coral = Color(0xFFEE675F)
@@ -204,6 +210,50 @@ internal fun RecordStamp(label: String, color: Color = NunuloColors.Coral, modif
 internal fun CoordinateTag(label: String, modifier: Modifier = Modifier) {
     Surface(color = NunuloColors.Lilac, shape = RoundedCornerShape(50), modifier = modifier) {
         Text(label, color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+    }
+}
+
+@Composable
+internal fun DateTimeField(
+    label: String,
+    value: String,
+    emptyLabel: String,
+    clearLabel: String,
+    onChange: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val zone = remember { ZoneId.systemDefault() }
+    val current = remember(value) {
+        runCatching { OffsetDateTime.parse(value).atZoneSameInstant(zone) }
+            .recoverCatching { Instant.parse(value).atZone(zone) }
+            .getOrElse { java.time.ZonedDateTime.now(zone) }
+    }
+    val display = value.takeIf(String::isNotBlank)?.let {
+        runCatching { current.format(DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm")) }.getOrNull()
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, fontWeight = FontWeight.Bold)
+        Text(display ?: emptyLabel, color = NunuloColors.Muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        TimePickerDialog(
+                            context,
+                            { _, hour, minute -> onChange(java.time.ZonedDateTime.of(year, month + 1, day, hour, minute, 0, 0, zone).toOffsetDateTime().toString()) },
+                            current.hour,
+                            current.minute,
+                            true,
+                        ).show()
+                    },
+                    current.year,
+                    current.monthValue - 1,
+                    current.dayOfMonth,
+                ).show()
+            }) { Text(if (value.isBlank()) "选择日期与时间" else "修改时间") }
+            if (value.isNotBlank()) TextButton(onClick = { onChange("") }) { Text(clearLabel) }
+        }
     }
 }
 

@@ -256,6 +256,29 @@ fun DiscoverContentScreenshot() = ScreenshotFrame(AppTab.Discover) {
 }
 
 @PreviewTest
+@Preview(name = "event_schedule_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun EventScheduleScreenshot() = ScreenshotFrame(AppTab.Discover) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text("创建活动", style = MaterialTheme.typography.titleLarge)
+                Text("不再手填时间格式，直接选择日期与时间。", color = NunuloColors.Muted)
+            }
+        }
+        item {
+            EventScheduleSection(
+                startsAt = "2026-08-14T18:30:00Z",
+                endsAt = "2026-08-14T21:00:00Z",
+                timeError = null,
+                onStartChange = {},
+                onEndChange = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_relations_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
