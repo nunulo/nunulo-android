@@ -131,6 +131,7 @@ private fun FeedCard(record: CheckinItem, controller: NunuloController, modifier
         modifier = modifier,
         onOpen = { controller.openRecord(record) },
         onLike = { controller.toggleLike(record) },
+        liking = controller.isLiking(record),
         image = {
             RemoteImage(record.displayUrl ?: record.thumbUrl, controller.baseUrl, controller.mediaApi, aspect = 1.04f)
         },
@@ -142,6 +143,7 @@ internal fun FeedRecordCard(
     record: CheckinItem,
     onOpen: () -> Unit,
     onLike: () -> Unit,
+    liking: Boolean = false,
     modifier: Modifier = Modifier,
     image: @Composable () -> Unit,
 ) {
@@ -173,8 +175,8 @@ internal fun FeedRecordCard(
                 if (summary.isNotEmpty()) Text(summary.joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (record.placeName.isNotBlank()) CoordinateTag(record.placeName, Modifier.weight(1f)) else Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onLike, contentPadding = PaddingValues(horizontal = 4.dp)) {
-                        Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}", color = if (record.liked) NunuloColors.Coral else NunuloColors.Muted)
+                    TextButton(enabled = !liking, onClick = onLike, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Text(if (liking) "更新中" else "${if (record.liked) "♥" else "♡"} ${record.likeCount}", color = if (record.liked) NunuloColors.Coral else NunuloColors.Muted)
                     }
                     Text("评 ${record.commentCount}", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
                 }
@@ -195,11 +197,12 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
             title = { Text("投诉这条记录") },
             text = { OutlinedTextField(reportReason, { if (it.length <= 120) reportReason = it }, label = { Text("原因") }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
             confirmButton = {
-                TextButton(enabled = reportReason.isNotBlank(), onClick = {
-                    controller.reportRecord(record, reportReason)
-                    reportReason = ""
-                    reportOpen = false
-                }) { Text("提交", color = NunuloColors.Danger) }
+                TextButton(enabled = reportReason.isNotBlank() && !controller.isReporting(record), onClick = {
+                    controller.reportRecord(record, reportReason) {
+                        reportReason = ""
+                        reportOpen = false
+                    }
+                }) { Text(if (controller.isReporting(record)) "提交中" else "提交", color = NunuloColors.Danger) }
             },
             dismissButton = { TextButton(onClick = { reportOpen = false }) { Text("取消") } },
         )
@@ -283,7 +286,7 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 item {
                     SectionCard("回应") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Button(onClick = { controller.toggleLike(record) }) { Text("${if (record.liked) "♥" else "♡"} ${record.likeCount}") }
+                            Button(enabled = !controller.isLiking(record), onClick = { controller.toggleLike(record) }) { Text(if (controller.isLiking(record)) "更新中" else "${if (record.liked) "♥" else "♡"} ${record.likeCount}") }
                             Text("${record.commentCount} 条评论", color = NunuloColors.Muted, modifier = Modifier.padding(start = 10.dp))
                             Spacer(Modifier.weight(1f))
                             if (!record.canEdit) TextButton(onClick = { reportOpen = true }) { Text("投诉", color = NunuloColors.Danger) }
@@ -293,7 +296,10 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 item {
                     SectionCard("补登记伙伴", "合照中的其他伙伴会在双方确认后进入相遇记录。") {
                         OutlinedTextField(partnerCode, { partnerCode = it }, label = { Text("伙伴编号，例如 N-...") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        TextButton(enabled = partnerCode.isNotBlank(), onClick = { controller.requestPartnerForRecord(record, partnerCode); partnerCode = "" }) { Text("提交补登记") }
+                        TextButton(
+                            enabled = partnerCode.isNotBlank() && !controller.isRequestingPartner(record),
+                            onClick = { controller.requestPartnerForRecord(record, partnerCode) { partnerCode = "" } },
+                        ) { Text(if (controller.isRequestingPartner(record)) "提交中" else "提交补登记") }
                     }
                 }
                 if (controller.albums.isNotEmpty()) {
@@ -338,7 +344,10 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                 item {
                     SectionCard("写下回应") {
                         OutlinedTextField(comment, { comment = it }, label = { Text("评论") }, minLines = 2, modifier = Modifier.fillMaxWidth())
-                        Button(enabled = comment.isNotBlank(), onClick = { controller.addComment(record, comment); comment = "" }) { Text("发布评论") }
+                        Button(
+                            enabled = comment.isNotBlank() && !controller.isCommenting(record),
+                            onClick = { controller.addComment(record, comment) { comment = "" } },
+                        ) { Text(if (controller.isCommenting(record)) "发布中" else "发布评论") }
                     }
                 }
                 if (record.canEdit) {

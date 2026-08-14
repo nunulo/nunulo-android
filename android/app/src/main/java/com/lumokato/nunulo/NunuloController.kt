@@ -171,6 +171,14 @@ internal class NunuloController(
         private set
     var notificationsError by mutableStateOf<String?>(null)
         private set
+    var likingRecordIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var commentingRecordIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var reportingRecordIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+    var partnerRequestRecordIds by mutableStateOf<Set<String>>(emptySet())
+        private set
     var message by mutableStateOf("记录、发现并整理你的伙伴足迹")
         private set
     var syncError by mutableStateOf<String?>(null)
@@ -586,6 +594,10 @@ internal class NunuloController(
         syncError = null
         screenErrors = emptyMap()
         notificationsError = null
+        likingRecordIds = emptySet()
+        commentingRecordIds = emptySet()
+        reportingRecordIds = emptySet()
+        partnerRequestRecordIds = emptySet()
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
@@ -791,39 +803,60 @@ internal class NunuloController(
     }
 
     fun toggleLike(record: CheckinItem) {
+        if (record.id in likingRecordIds) return
+        likingRecordIds = likingRecordIds + record.id
         coroutineScope.launch {
             try {
                 updateRecordEverywhere(authed { token -> api.setLike(apiBase, token, record) })
             } catch (error: Exception) {
                 message = error.message ?: "互动失败"
+            } finally {
+                likingRecordIds = likingRecordIds - record.id
             }
         }
     }
 
-    fun addComment(record: CheckinItem, body: String) {
-        if (body.isBlank()) return
+    fun isLiking(record: CheckinItem): Boolean = record.id in likingRecordIds
+
+    fun addComment(record: CheckinItem, body: String, onSuccess: () -> Unit = {}) {
+        if (body.isBlank() || record.id in commentingRecordIds) return
+        commentingRecordIds = commentingRecordIds + record.id
         coroutineScope.launch {
             try {
                 comments = comments + authed { token -> api.addComment(apiBase, token, record.id, body) }
                 updateRecordEverywhere(record.copy(commentCount = record.commentCount + 1))
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "评论失败"
+            } finally {
+                commentingRecordIds = commentingRecordIds - record.id
             }
         }
     }
 
-    fun reportRecord(record: CheckinItem, reason: String) {
+    fun isCommenting(record: CheckinItem): Boolean = record.id in commentingRecordIds
+
+    fun reportRecord(record: CheckinItem, reason: String, onSuccess: () -> Unit = {}) {
+        if (reason.isBlank() || record.id in reportingRecordIds) return
+        reportingRecordIds = reportingRecordIds + record.id
         coroutineScope.launch {
             try {
                 authed { token -> api.reportCheckin(apiBase, token, record.id, reason) }
                 message = "投诉已提交给管理员"
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "投诉失败"
+            } finally {
+                reportingRecordIds = reportingRecordIds - record.id
             }
         }
     }
 
-    fun requestPartnerForRecord(record: CheckinItem, code: String) {
+    fun isReporting(record: CheckinItem): Boolean = record.id in reportingRecordIds
+
+    fun requestPartnerForRecord(record: CheckinItem, code: String, onSuccess: () -> Unit = {}) {
+        if (code.isBlank() || record.id in partnerRequestRecordIds) return
+        partnerRequestRecordIds = partnerRequestRecordIds + record.id
         coroutineScope.launch {
             try {
                 val partner = authed { token -> api.listPartners(apiBase, token, code) }
@@ -832,11 +865,16 @@ internal class NunuloController(
                 authed { token -> api.requestPartnerRegistration(apiBase, token, record.id, partner.id) }
                 selectedRecord = authed { token -> api.getCheckin(apiBase, token, record.id) }
                 message = if (partner.ownerUserId == currentUser?.id) "伙伴已登记到记录" else "已提交伙伴补登记，等待相关用户确认"
+                onSuccess()
             } catch (error: Exception) {
                 message = error.message ?: "伙伴补登记失败"
+            } finally {
+                partnerRequestRecordIds = partnerRequestRecordIds - record.id
             }
         }
     }
+
+    fun isRequestingPartner(record: CheckinItem): Boolean = record.id in partnerRequestRecordIds
 
     fun addToAlbum(record: CheckinItem, album: AlbumItem) {
         coroutineScope.launch {

@@ -171,6 +171,23 @@ fun FeedRealContentScreenshot() = ScreenshotFrame(AppTab.Feed) {
 }
 
 @PreviewTest
+@Preview(name = "feed_interaction_submitting_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun FeedInteractionSubmittingScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            FeedRecordCard(
+                record = screenshotRecord(),
+                onOpen = {},
+                onLike = {},
+                liking = true,
+                image = { ScreenshotMedia("互动中的记录") },
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "partner_long_content_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun PartnerLongContentScreenshot() = ScreenshotFrame(AppTab.Partners) {
