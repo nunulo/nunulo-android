@@ -43,6 +43,7 @@ import java.time.OffsetDateTime
 @Composable
 internal fun DiscoveryScreen(controller: NunuloController) {
     var candidateOpen by rememberSaveable { mutableStateOf(false) }
+    var catalogBrowserOpen by rememberSaveable { mutableStateOf(false) }
     var eventEditor by rememberSaveable { mutableStateOf(false) }
     var eventBrowserOpen by rememberSaveable { mutableStateOf(false) }
     var editingEventId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -73,7 +74,12 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(catalogTypes) { option -> FilterChip(selected = catalogType == option.first, onClick = { catalogType = option.first }, label = { Text(option.second) }) }
                 }
-                val values = controller.discovery.catalog[catalogType].orEmpty()
+                val values = catalogBrowseItems(
+                    catalog = controller.discovery.catalog,
+                    query = "",
+                    type = CatalogTypeFilter.entries.first { it.key == catalogType },
+                    follow = CatalogFollowFilter.All,
+                ).take(3)
                 if (values.isEmpty()) Text("这一类还没有正式内容", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(values, key = { it.id }) { entity ->
@@ -90,7 +96,11 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                         }
                     }
                 }
-                TextButton(onClick = { candidateOpen = true }) { Text("没有找到？提交目录候选") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { catalogBrowserOpen = true }) { Text("浏览完整目录") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { candidateOpen = true }) { Text("提交候选") }
+                }
             }
         }
         item {
@@ -153,6 +163,18 @@ internal fun DiscoveryScreen(controller: NunuloController) {
         }
     }
     if (candidateOpen) DiscoveryCandidateDialog(controller, onDismiss = { candidateOpen = false })
+    if (catalogBrowserOpen) {
+        Dialog(onDismissRequest = { catalogBrowserOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            CatalogBrowserPage(
+                catalog = controller.discovery.catalog,
+                onClose = { catalogBrowserOpen = false },
+                onOpen = controller::openCatalog,
+                onFollow = controller::toggleCatalogFollow,
+                onCreateCandidate = { candidateOpen = true },
+                initialType = CatalogTypeFilter.entries.first { it.key == catalogType },
+            )
+        }
+    }
     if (eventBrowserOpen) {
         Dialog(onDismissRequest = { eventBrowserOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             EventBrowserPage(
@@ -184,6 +206,134 @@ internal fun DiscoveryScreen(controller: NunuloController) {
                 },
                 onDismiss = { deletingEventId = null },
             )
+        }
+    }
+}
+
+@Composable
+internal fun CatalogBrowserPage(
+    catalog: Map<String, List<CatalogEntityItem>>,
+    onClose: () -> Unit,
+    onOpen: (CatalogEntityItem) -> Unit,
+    onFollow: (CatalogEntityItem) -> Unit,
+    onCreateCandidate: () -> Unit,
+    initialType: CatalogTypeFilter = CatalogTypeFilter.All,
+    initialFollow: CatalogFollowFilter = CatalogFollowFilter.All,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var typeName by rememberSaveable { mutableStateOf(initialType.name) }
+    var followName by rememberSaveable { mutableStateOf(initialFollow.name) }
+    val type = runCatching { CatalogTypeFilter.valueOf(typeName) }.getOrDefault(CatalogTypeFilter.All)
+    val follow = runCatching { CatalogFollowFilter.valueOf(followName) }.getOrDefault(CatalogFollowFilter.All)
+    val allItems = catalogBrowseItems(catalog, "", CatalogTypeFilter.All, CatalogFollowFilter.All)
+    val visible = catalogBrowseItems(catalog, query, type, follow)
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RecordStamp("录", NunuloColors.MapBlue)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("作品与角色目录", style = MaterialTheme.typography.titleMedium)
+                        Text("${allItems.size} 项正式内容与候选", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("顺着名字找到它", style = MaterialTheme.typography.titleLarge)
+                        Text("中文、日文、罗马字、别名和所属作品都可以搜索。", color = NunuloColors.Muted)
+                    }
+                }
+                item {
+                    SectionCard("查找目录") {
+                        OutlinedTextField(
+                            value = query,
+                            onValueChange = { query = it },
+                            label = { Text("作品、组合、角色或别名") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(CatalogTypeFilter.entries) { option ->
+                                FilterChip(selected = type == option, onClick = { typeName = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(CatalogFollowFilter.entries) { option ->
+                                FilterChip(selected = follow == option, onClick = { followName = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                        Text("找到 ${visible.size} 项", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                if (visible.isEmpty()) {
+                    item {
+                        EmptyState(
+                            "没有符合条件的目录项",
+                            if (query.isBlank()) "换一个类型或显示全部目录。" else "换个名字、日文或罗马字试试；仍找不到时可以原位提交候选。",
+                        )
+                    }
+                    item { Button(onClick = onCreateCandidate, modifier = Modifier.fillMaxWidth()) { Text("提交目录候选") } }
+                } else {
+                    items(visible, key = { "${it.entityType}:${it.id}" }) { entity ->
+                        CatalogDirectoryCard(
+                            entity = entity,
+                            onOpen = { onOpen(entity) },
+                            onFollow = { onFollow(entity) },
+                        )
+                    }
+                    item { TextButton(onClick = onCreateCandidate, modifier = Modifier.fillMaxWidth()) { Text("没有找到？提交目录候选") } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun CatalogDirectoryCard(
+    entity: CatalogEntityItem,
+    onOpen: () -> Unit,
+    onFollow: () -> Unit,
+) {
+    val type = CatalogTypeFilter.entries.firstOrNull { it.key == entity.entityType }
+    val hierarchy = listOfNotNull(entity.work?.name, entity.group?.name).distinct()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = if (entity.followed) NunuloColors.Soft else NunuloColors.Paper),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecordStamp(type?.label?.take(1) ?: "录", if (entity.followed) NunuloColors.Coral else NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text(entity.canonicalName, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(type?.label, hierarchy.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · "),
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                CoordinateTag(if (entity.status == "active") "正式" else "待审核")
+            }
+            if (entity.aliases.isNotEmpty()) {
+                Text("别名 · ${entity.aliases.take(3).joinToString(" / ")}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CoordinateTag("${entity.recordCount} 条记录")
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onFollow) { Text(if (entity.followed) "取消关注" else "关注") }
+                TextButton(onClick = onOpen) { Text("打开") }
+            }
         }
     }
 }

@@ -50,6 +50,36 @@ internal fun CatalogEntityItem.matchesCatalogQuery(query: String): Boolean {
 
 private fun String.catalogSearchKey(): String = lowercase().filter(Char::isLetterOrDigit)
 
+internal enum class CatalogTypeFilter(val key: String?, val label: String) {
+    All(null, "全部"),
+    ItemType("item_type", "物件"),
+    Work("work", "作品"),
+    Group("group", "组合"),
+    Character("character", "角色"),
+}
+
+internal enum class CatalogFollowFilter(val label: String) {
+    All("全部目录"),
+    Followed("我的关注"),
+}
+
+internal fun catalogBrowseItems(
+    catalog: Map<String, List<CatalogEntityItem>>,
+    query: String,
+    type: CatalogTypeFilter,
+    follow: CatalogFollowFilter,
+): List<CatalogEntityItem> = catalog.values
+    .flatten()
+    .distinctBy { "${it.entityType}:${it.id}" }
+    .filter { entity -> type.key == null || entity.entityType == type.key }
+    .filter { entity -> follow == CatalogFollowFilter.All || entity.followed }
+    .filter { entity -> entity.matchesCatalogQuery(query) }
+    .sortedWith(
+        compareByDescending<CatalogEntityItem> { it.followed }
+            .thenByDescending(CatalogEntityItem::recordCount)
+            .thenBy(CatalogEntityItem::canonicalName),
+    )
+
 internal data class PartnerItem(
     val id: String,
     val publicCode: String,
@@ -272,6 +302,26 @@ internal fun eventCollectionStats(records: List<CheckinItem>): EventCollectionSt
     partnerCount = records.flatMap(CheckinItem::partners).map(PartnerItem::id).distinct().size,
     characterCount = records.flatMap(CheckinItem::characters).map(CatalogRef::id).distinct().size,
     memberCount = records.map(CheckinItem::userId).filter { it > 0 }.distinct().size,
+)
+
+internal data class CatalogCollectionStats(
+    val memberCount: Int,
+    val partnerCount: Int,
+    val placeCount: Int,
+    val eventCount: Int,
+)
+
+internal fun catalogCollectionStats(records: List<CheckinItem>): CatalogCollectionStats = CatalogCollectionStats(
+    memberCount = records.map(CheckinItem::userId).filter { it > 0 }.distinct().size,
+    partnerCount = records.flatMap(CheckinItem::partners).map(PartnerItem::id).distinct().size,
+    placeCount = records.mapNotNull { record ->
+        when {
+            record.latitude != null && record.longitude != null -> "${record.placeName.trim().lowercase()}@${record.latitude},${record.longitude}"
+            record.placeName.isNotBlank() -> record.placeName.trim().lowercase()
+            else -> null
+        }
+    }.distinct().size,
+    eventCount = records.flatMap(CheckinItem::events).map(EventItem::id).distinct().size,
 )
 
 internal data class TopicItem(

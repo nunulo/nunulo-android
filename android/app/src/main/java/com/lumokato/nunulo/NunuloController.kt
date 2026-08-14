@@ -26,6 +26,7 @@ internal data class RecordCollection(
     val filters: Map<String, String> = emptyMap(),
     val checkinIds: List<String> = emptyList(),
     val event: EventItem? = null,
+    val catalogEntity: CatalogEntityItem? = null,
 )
 
 internal class DetailRequestGate {
@@ -1107,6 +1108,13 @@ internal class NunuloController(
                         this[entity.entityType] = get(entity.entityType).orEmpty().map { if (it.id == updated.id) updated else it }
                     }
                 )
+                collection = collection?.let { target ->
+                    if (target.catalogEntity?.id == updated.id && target.catalogEntity.entityType == updated.entityType) {
+                        target.copy(catalogEntity = updated)
+                    } else {
+                        target
+                    }
+                }
                 message = if (updated.followed) "已关注 ${updated.canonicalName}" else "已取消关注 ${updated.canonicalName}"
             } catch (error: Exception) {
                 message = error.message ?: "关注操作失败"
@@ -1115,7 +1123,14 @@ internal class NunuloController(
     }
 
     fun openCatalog(entity: CatalogEntityItem) {
-        openCollection(RecordCollection(entity.canonicalName, "${entity.recordCount} 条记录", mapOf("${entity.entityType}_id" to entity.id)))
+        openCollection(
+            RecordCollection(
+                entity.canonicalName,
+                "${entity.recordCount} 条记录",
+                mapOf("${entity.entityType}_id" to entity.id),
+                catalogEntity = entity,
+            ),
+        )
     }
 
     fun saveEvent(id: String?, name: String, type: String, visibility: String, placeId: String?, seriesId: String?, startsAt: String?, endsAt: String?, description: String, onSuccess: () -> Unit = {}) {

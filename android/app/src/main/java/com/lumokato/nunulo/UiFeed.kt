@@ -52,6 +52,13 @@ internal fun FeedScreen(controller: NunuloController) {
                 controller.collection?.let { target ->
                     target.event?.let { event ->
                         EventCollectionHeader(event, controller.feedItems, onBack = controller::loadFeed)
+                    } ?: target.catalogEntity?.let { entity ->
+                        CatalogCollectionHeader(
+                            entity = entity,
+                            records = controller.feedItems,
+                            onFollow = { controller.toggleCatalogFollow(entity) },
+                            onBack = controller::loadFeed,
+                        )
                     } ?: SectionCard(target.title, target.subtitle) {
                             TextButton(onClick = { controller.loadFeed() }) { Text("返回动态") }
                         }
@@ -69,7 +76,7 @@ internal fun FeedScreen(controller: NunuloController) {
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(if (controller.collection == null) "今天，伙伴去了哪里？" else "聚合记录", style = MaterialTheme.typography.titleLarge)
+                        Text(if (controller.collection == null) "今天，伙伴去了哪里？" else "这里留下的记录", style = MaterialTheme.typography.titleLarge)
                         Text("${controller.feedItems.size} 条照片记录，沿着伙伴、角色与地点继续发现", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                     }
                     Button(onClick = { controller.selectTab(AppTab.Capture) }) { Text("记一刻") }
@@ -100,11 +107,70 @@ internal fun FeedScreen(controller: NunuloController) {
         }
         if (controller.feedItems.isEmpty()) {
             if (controller.screenError(AppTab.Feed) == null && !controller.collectionLoading && controller.collectionError == null) {
-                item { Box(Modifier.padding(horizontal = 12.dp)) { EmptyState("这里还没有内容", "先发布第一条照片记录，或关注作品、角色和伙伴。") } }
+                item {
+                    Box(Modifier.padding(horizontal = 12.dp)) {
+                        EmptyState(
+                            if (controller.collection == null) "这里还没有内容" else "还没有关联记录",
+                            if (controller.collection == null) "先发布第一条照片记录，或关注作品、角色和伙伴。" else "发布记录时选择这个目录项，真实动态就会收进这里。",
+                        )
+                    }
+                }
             }
         }
         items(controller.feedItems, key = CheckinItem::id) { record ->
             FeedCard(record, controller, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+        }
+    }
+}
+
+@Composable
+internal fun CatalogCollectionHeader(
+    entity: CatalogEntityItem,
+    records: List<CheckinItem>,
+    onFollow: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val stats = catalogCollectionStats(records)
+    val type = CatalogTypeFilter.entries.firstOrNull { it.key == entity.entityType }
+    val hierarchy = listOfNotNull(entity.work?.name, entity.group?.name).distinct()
+    Surface(color = if (entity.followed) NunuloColors.Soft else NunuloColors.Lilac, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp(type?.label?.take(1) ?: "录", if (entity.followed) NunuloColors.Coral else NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text(entity.canonicalName, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(type?.label, hierarchy.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · "),
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                EventHeaderTag(if (entity.status == "active") "正式" else "待审核")
+            }
+            if (entity.aliases.isNotEmpty()) {
+                Text("别名 · ${entity.aliases.take(3).joinToString(" / ")}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EventHeaderTag("${entity.recordCount} 条记录")
+                EventHeaderTag(if (entity.followed) "已关注" else "未关注")
+            }
+            Surface(color = NunuloColors.Paper, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("当前可见记录", fontWeight = FontWeight.Bold)
+                    Text(
+                        "${stats.memberCount} 位成员 · ${stats.partnerCount} 位伙伴 · ${stats.placeCount} 个地点 · ${stats.eventCount} 个活动",
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("返回动态") }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onFollow) { Text(if (entity.followed) "取消关注" else "关注") }
+            }
         }
     }
 }

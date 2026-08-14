@@ -628,6 +628,35 @@ fun EventBrowserScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "catalog_browser_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CatalogBrowserScreenshot() = NunuloTheme {
+    CatalogBrowserPage(
+        catalog = screenshotCatalog(),
+        onClose = {},
+        onOpen = {},
+        onFollow = {},
+        onCreateCandidate = {},
+    )
+}
+
+@PreviewTest
+@Preview(name = "catalog_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CatalogCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            CatalogCollectionHeader(
+                entity = screenshotCatalog().getValue("character").first(),
+                records = listOf(screenshotRecord(), screenshotRecord().copy(id = "record-2", userId = 11, placeName = "上海梅赛德斯奔驰文化中心")),
+                onFollow = {},
+                onBack = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "event_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun EventCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
@@ -937,4 +966,49 @@ private fun screenshotMeetingPartner() = PartnerItem(
     coverUrl = null,
     recordCount = 18,
     canEdit = false,
+)
+
+private fun screenshotCatalog() = mapOf(
+    "work" to listOf(
+        CatalogEntityItem(
+            id = "bandori",
+            entityType = "work",
+            canonicalName = "BanG Dream!",
+            aliases = listOf("BanG Dream! 少女乐团派对！", "バンドリ！"),
+            followed = true,
+            recordCount = 128,
+        ),
+    ),
+    "group" to listOf(
+        CatalogEntityItem(
+            id = "mygo",
+            entityType = "group",
+            canonicalName = "MyGO!!!!!",
+            aliases = listOf("迷子", "マイゴ"),
+            recordCount = 42,
+            work = CatalogRef("bandori", "BanG Dream!"),
+        ),
+    ),
+    "character" to listOf(
+        CatalogEntityItem(
+            id = "tomori",
+            entityType = "character",
+            canonicalName = "高松灯",
+            aliases = listOf("高松 燈", "たかまつ ともり", "Takamatsu Tomori"),
+            followed = true,
+            recordCount = 18,
+            work = CatalogRef("bandori", "BanG Dream!"),
+            group = CatalogRef("mygo", "MyGO!!!!!"),
+        ),
+        CatalogEntityItem(
+            id = "anon",
+            entityType = "character",
+            canonicalName = "千早爱音",
+            aliases = listOf("千早 愛音", "Chihaya Anon"),
+            status = "pending",
+            recordCount = 9,
+            work = CatalogRef("bandori", "BanG Dream!"),
+            group = CatalogRef("mygo", "MyGO!!!!!"),
+        ),
+    ),
 )
