@@ -25,6 +25,7 @@ internal data class RecordCollection(
     val subtitle: String = "",
     val filters: Map<String, String> = emptyMap(),
     val checkinIds: List<String> = emptyList(),
+    val event: EventItem? = null,
 )
 
 internal class DetailRequestGate {
@@ -1146,7 +1147,7 @@ internal class NunuloController(
     }
 
     fun openEvent(event: EventItem) {
-        openCollection(RecordCollection(event.name, eventTypeLabel(event.eventType), mapOf("event_id" to event.id)))
+        openCollection(RecordCollection(event.name, eventTypeLabel(event.eventType), mapOf("event_id" to event.id), event = event))
     }
 
     fun openTopic(topic: TopicItem) {

@@ -628,6 +628,36 @@ fun EventBrowserScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "event_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun EventCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            EventCollectionHeader(
+                event = EventItem(
+                    id = "event-upcoming",
+                    name = "MyGO!!!!! 7th LIVE「こたえなんてなくても」",
+                    eventType = "offline_live",
+                    visibility = "public",
+                    status = "active",
+                    official = true,
+                    place = PlaceItem("place-1", "北京工人体育场北门外场区域", latitude = 39.93, longitude = 116.44),
+                    series = EventSeriesItem("series-1", "MyGO!!!!! LIVE 系列", "active"),
+                    startsAt = "2026-08-16T10:00:00Z",
+                    endsAt = "2026-08-16T13:00:00Z",
+                    description = "带着伙伴一起看现场，活动页只汇总真实关联的记录、伙伴与角色。",
+                    recordCount = 18,
+                    canEdit = false,
+                ),
+                records = listOf(screenshotRecord(), screenshotRecord().copy(id = "record-2", userId = 11)),
+                onBack = {},
+                now = Instant.parse("2026-08-14T12:00:00Z"),
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_relations_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {

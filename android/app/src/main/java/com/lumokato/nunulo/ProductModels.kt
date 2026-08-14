@@ -262,6 +262,18 @@ internal fun eventBrowseItems(
     }
 }
 
+internal data class EventCollectionStats(
+    val partnerCount: Int,
+    val characterCount: Int,
+    val memberCount: Int,
+)
+
+internal fun eventCollectionStats(records: List<CheckinItem>): EventCollectionStats = EventCollectionStats(
+    partnerCount = records.flatMap(CheckinItem::partners).map(PartnerItem::id).distinct().size,
+    characterCount = records.flatMap(CheckinItem::characters).map(CatalogRef::id).distinct().size,
+    memberCount = records.map(CheckinItem::userId).filter { it > 0 }.distinct().size,
+)
+
 internal data class TopicItem(
     val id: String,
     val title: String,

@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import java.time.Instant
 
 @Composable
 internal fun FeedScreen(controller: NunuloController) {
@@ -49,9 +50,11 @@ internal fun FeedScreen(controller: NunuloController) {
         item {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 controller.collection?.let { target ->
-                    SectionCard(target.title, target.subtitle) {
-                        TextButton(onClick = { controller.loadFeed() }) { Text("返回动态") }
-                    }
+                    target.event?.let { event ->
+                        EventCollectionHeader(event, controller.feedItems, onBack = controller::loadFeed)
+                    } ?: SectionCard(target.title, target.subtitle) {
+                            TextButton(onClick = { controller.loadFeed() }) { Text("返回动态") }
+                        }
                 } ?: run {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(FeedScope.entries) { scope ->
@@ -103,6 +106,68 @@ internal fun FeedScreen(controller: NunuloController) {
         items(controller.feedItems, key = CheckinItem::id) { record ->
             FeedCard(record, controller, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
         }
+    }
+}
+
+@Composable
+internal fun EventCollectionHeader(
+    event: EventItem,
+    records: List<CheckinItem>,
+    onBack: () -> Unit,
+    now: Instant = Instant.now(),
+) {
+    val stats = eventCollectionStats(records)
+    Surface(color = NunuloColors.Lilac, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp("活", NunuloColors.Leaf)
+                Column(Modifier.weight(1f)) {
+                    Text(event.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOf(eventTypeLabel(event.eventType), event.series?.canonicalName).filterNotNull().joinToString(" · "),
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                EventHeaderTag(if (event.official) "官方" else "共建")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EventHeaderTag(event.periodLabel(now))
+                EventHeaderTag("${event.recordCount} 条记录")
+            }
+            val schedule = listOfNotNull(event.startsAt?.let(::shortDate), event.endsAt?.let(::shortDate)).distinct().joinToString("—")
+            if (schedule.isNotBlank()) Text(schedule, color = NunuloColors.MapBlue, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+            event.place?.let { place ->
+                Surface(color = NunuloColors.Paper, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                        Text(place.name, fontWeight = FontWeight.Bold)
+                        Text("活动地点 · ${formatCoordinate(place.latitude, place.longitude)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (event.description.isNotBlank()) Text(event.description, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(
+                "当前可见记录中 · ${stats.memberCount} 位成员 · ${stats.partnerCount} 位伙伴 · ${stats.characterCount} 个角色",
+                color = NunuloColors.Muted,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("返回动态") }
+        }
+    }
+}
+
+@Composable
+private fun EventHeaderTag(label: String) {
+    Surface(color = NunuloColors.Paper, shape = RoundedCornerShape(50)) {
+        Text(
+            label,
+            color = NunuloColors.MapBlue,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+        )
     }
 }
 

@@ -41,6 +41,16 @@ class EventBrowseTest {
         assertFalse(event(startsAt = null).isPast(now))
     }
 
+    @Test
+    fun eventCollectionStatsDeduplicateMembersPartnersAndCharacters() {
+        val partner = PartnerItem("partner-1", "N-1", 7, "灯", "public", "active", null, null, null, null, 2, false)
+        val first = record("record-1", 7, listOf(partner), listOf(CatalogRef("tomori", "高松灯")))
+        val second = record("record-2", 7, listOf(partner), listOf(CatalogRef("tomori", "高松灯")))
+        val third = record("record-3", 9, emptyList(), listOf(CatalogRef("anon", "千早爱音")))
+
+        assertEquals(EventCollectionStats(partnerCount = 1, characterCount = 2, memberCount = 2), eventCollectionStats(listOf(first, second, third)))
+    }
+
     private fun event(
         id: String = "event-1",
         name: String = "线下 Live",
@@ -64,5 +74,19 @@ class EventBrowseTest {
         description = description,
         recordCount = 0,
         canEdit = false,
+    )
+
+    private fun record(id: String, userId: Int, partners: List<PartnerItem>, characters: List<CatalogRef>) = CheckinItem(
+        id = id,
+        userId = userId,
+        placeName = "",
+        note = "",
+        latitude = null,
+        longitude = null,
+        createdAt = null,
+        takenAt = null,
+        source = "android_capture",
+        partners = partners,
+        characters = characters,
     )
 }
