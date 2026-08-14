@@ -50,6 +50,9 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
               Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ProfileIdentity(
                     user = user,
+                    recordCount = controller.mineItems.size,
+                    partnerCount = controller.partners.size,
+                    placeCount = controller.footprint.items.size,
                     onPickAvatar = onPickAvatar,
                     onLogout = controller::logout,
                     onOpenAdmin = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, "/admin/")) },
@@ -285,6 +288,9 @@ internal fun ProfileSectionTabs(selected: String, onSelect: (String) -> Unit, mo
 @Composable
 internal fun ProfileIdentity(
     user: AuthUser?,
+    recordCount: Int,
+    partnerCount: Int,
+    placeCount: Int,
     onPickAvatar: () -> Unit,
     onLogout: () -> Unit,
     onOpenAdmin: () -> Unit,
@@ -303,9 +309,28 @@ internal fun ProfileIdentity(
             }
             TextButton(onClick = onLogout) { Text("退出") }
         }
+        Surface(
+            color = NunuloColors.Lilac,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+                ProfileMetric("记录", recordCount, Modifier.weight(1f))
+                ProfileMetric("伙伴", partnerCount, Modifier.weight(1f))
+                ProfileMetric("地点", placeCount, Modifier.weight(1f))
+            }
+        }
         if (adminRole != null) {
             TextButton(onClick = onOpenAdmin) { Text("打开 Web 管理台") }
             Text("Android 只显示身份和入口；目录、举报、活动与存储治理仍在独立 Web Admin。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+@Composable
+private fun ProfileMetric(label: String, value: Int, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(value.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+        Text(label, color = NunuloColors.Muted, style = MaterialTheme.typography.labelMedium)
     }
 }

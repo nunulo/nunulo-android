@@ -343,6 +343,9 @@ fun ProfileMemberScreenshot() = ScreenshotFrame(AppTab.Profile) {
     Surface(color = NunuloColors.Paper, modifier = Modifier.padding(12.dp)) {
         ProfileIdentity(
             user = screenshotUser(roles = listOf("member")),
+            recordCount = 42,
+            partnerCount = 3,
+            placeCount = 8,
             onPickAvatar = {},
             onLogout = {},
             onOpenAdmin = {},
@@ -358,6 +361,9 @@ fun ProfileOwnerScreenshot() = ScreenshotFrame(AppTab.Profile) {
     Surface(color = NunuloColors.Paper, modifier = Modifier.padding(12.dp)) {
         ProfileIdentity(
             user = screenshotUser(roles = listOf("member", "owner")),
+            recordCount = 42,
+            partnerCount = 3,
+            placeCount = 8,
             onPickAvatar = {},
             onLogout = {},
             onOpenAdmin = {},
