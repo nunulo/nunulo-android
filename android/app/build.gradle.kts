@@ -53,8 +53,8 @@ android {
         applicationId = "com.lumokato.nunulo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.3.0-preview.1"
+        versionCode = 13
+        versionName = "0.3.0-preview.2"
         manifestPlaceholders["amapApiKey"] = ""
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
