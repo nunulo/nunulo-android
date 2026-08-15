@@ -425,6 +425,10 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         executeJson(authorized(apiBase, "/api/notifications/read-all", token).post(emptyBody()).build())
     }
 
+    suspend fun markNotificationRead(apiBase: String, token: String, notificationId: String) = withContext(Dispatchers.IO) {
+        executeJson(authorized(apiBase, "/api/notifications/$notificationId/read", token).post(emptyBody()).build())
+    }
+
     suspend fun listPeople(apiBase: String, token: String): List<PersonItem> = withContext(Dispatchers.IO) {
         executeJson(authorized(apiBase, "/api/users?limit=100", token).get().build()).getJSONArray("items").objectItems(::parsePerson)
     }

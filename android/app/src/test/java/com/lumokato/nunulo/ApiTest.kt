@@ -109,6 +109,34 @@ class ApiTest {
     }
 
     @Test
+    fun notificationReadEndpointsUseSingleAndBulkRoutes() = runBlocking {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            requests += Triple(request.method, request.url.encodedPath, request.header("Authorization"))
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{}".toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        val api = NunuloApi(client)
+
+        api.markNotificationRead("https://nunulo.test", "access", "notification-1")
+        api.markNotificationsRead("https://nunulo.test", "access")
+
+        assertEquals(
+            listOf(
+                Triple("POST", "/api/notifications/notification-1/read", "Bearer access"),
+                Triple("POST", "/api/notifications/read-all", "Bearer access"),
+            ),
+            requests,
+        )
+    }
+
+    @Test
     fun passwordChangeRequiresCurrentPasswordEightCharactersAndMatchingConfirmation() {
         assertFalse(passwordChangeReady("", "new-pass-8", "new-pass-8"))
         assertFalse(passwordChangeReady("old-pass", "short", "short"))

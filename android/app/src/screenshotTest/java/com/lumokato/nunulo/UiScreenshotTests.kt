@@ -636,6 +636,29 @@ fun NotificationsScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "notifications_marking_all_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun NotificationsMarkingAllScreenshot() = NunuloTheme {
+    NotificationsPage(
+        notifications = listOf(
+            NotificationItem(
+                id = "notification-marking",
+                title = "伙伴补登记待确认",
+                body = "另一位成员在合照中登记了你的伙伴，请确认是否共同出现。",
+                targetType = "checkin_partner",
+                targetId = "record-1:partner-1",
+                readAt = null,
+                createdAt = "2026-08-15T00:30:00Z",
+            ),
+        ),
+        markingAll = true,
+        onClose = {},
+        onMarkAllRead = {},
+        onOpen = {},
+    )
+}
+
+@PreviewTest
 @Preview(name = "notifications_partial_failure_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun NotificationsPartialFailureScreenshot() = NunuloTheme {

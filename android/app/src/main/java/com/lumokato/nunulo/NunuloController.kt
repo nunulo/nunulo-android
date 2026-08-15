@@ -196,6 +196,10 @@ internal class NunuloController(
         private set
     var notificationsError by mutableStateOf<String?>(null)
         private set
+    var notificationsMarkingAll by mutableStateOf(false)
+        private set
+    var markingNotificationIds by mutableStateOf<Set<String>>(emptySet())
+        private set
     var likingRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var commentingRecordIds by mutableStateOf<Set<String>>(emptySet())
@@ -653,6 +657,8 @@ internal class NunuloController(
         syncError = null
         screenErrors = emptyMap()
         notificationsError = null
+        notificationsMarkingAll = false
+        markingNotificationIds = emptySet()
         likingRecordIds = emptySet()
         commentingRecordIds = emptySet()
         reportingRecordIds = emptySet()
@@ -1626,18 +1632,36 @@ internal class NunuloController(
     }
 
     fun markNotificationsRead() {
+        if (notificationsMarkingAll) return
+        notificationsMarkingAll = true
         coroutineScope.launch {
             try {
                 authed { token -> api.markNotificationsRead(apiBase, token) }
-                notifications = notifications.map { it.copy(readAt = it.readAt ?: "now") }
+                notifications = markNotificationsReadLocally(notifications)
                 message = "通知已全部标记为已读"
             } catch (error: Exception) {
                 message = error.message ?: "通知状态更新失败"
+            } finally {
+                notificationsMarkingAll = false
             }
         }
     }
 
     fun openNotification(notification: NotificationItem) {
+        if (notification.readAt == null && notification.id !in markingNotificationIds) {
+            markingNotificationIds = markingNotificationIds + notification.id
+            val messageBeforeRead = message
+            coroutineScope.launch {
+                try {
+                    authed { token -> api.markNotificationRead(apiBase, token, notification.id) }
+                    notifications = markNotificationsReadLocally(notifications, notification.id)
+                } catch (_: Exception) {
+                    if (message == messageBeforeRead) message = "通知已打开，但未读状态暂时没有同步"
+                } finally {
+                    markingNotificationIds = markingNotificationIds - notification.id
+                }
+            }
+        }
         notificationsOpen = false
         val targetUserId = notificationTargetUserId(notification)
         when {
@@ -1652,6 +1676,14 @@ internal class NunuloController(
             else -> selectTab(AppTab.Profile)
         }
     }
+}
+
+internal fun markNotificationsReadLocally(
+    notifications: List<NotificationItem>,
+    notificationId: String? = null,
+    readAt: String = "now",
+): List<NotificationItem> = notifications.map { item ->
+    if (item.readAt == null && (notificationId == null || item.id == notificationId)) item.copy(readAt = readAt) else item
 }
 
 internal data class DraftValidation(

@@ -667,6 +667,7 @@ internal fun NotificationsDialog(controller: NunuloController) {
         NotificationsPage(
             notifications = controller.notifications,
             error = controller.notificationsError,
+            markingAll = controller.notificationsMarkingAll,
             onClose = { controller.notificationsOpen = false },
             onMarkAllRead = controller::markNotificationsRead,
             onOpen = controller::openNotification,
@@ -679,6 +680,7 @@ internal fun NotificationsDialog(controller: NunuloController) {
 internal fun NotificationsPage(
     notifications: List<NotificationItem>,
     error: String? = null,
+    markingAll: Boolean = false,
     onClose: () -> Unit,
     onMarkAllRead: () -> Unit,
     onOpen: (NotificationItem) -> Unit,
@@ -725,7 +727,9 @@ internal fun NotificationsPage(
                                 Text(if (unreadCount == 0) "都看完了" else "先看未读消息", style = MaterialTheme.typography.titleLarge)
                                 Text("点击通知会直接打开对应记录或功能页。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                             }
-                            TextButton(enabled = unreadCount > 0, onClick = onMarkAllRead) { Text("全部已读") }
+                            TextButton(enabled = unreadCount > 0 && !markingAll, onClick = onMarkAllRead) {
+                                Text(if (markingAll) "同步中" else "全部已读")
+                            }
                         }
                     }
                     items(notifications.sortedWith(compareBy<NotificationItem> { it.readAt != null }.thenByDescending { it.createdAt.orEmpty() }), key = { it.id }) { notification ->
