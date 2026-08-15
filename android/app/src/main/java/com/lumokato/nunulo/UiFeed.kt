@@ -630,9 +630,9 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                     item {
                         SectionCard("作品与角色") {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(record.itemTypes) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "物件类型", mapOf("item_type_id" to item.id))) }, label = { Text(item.name) }) }
-                                items(record.works) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "作品", mapOf("work_id" to item.id))) }, label = { Text(item.name) }) }
-                                items(record.characters) { item -> AssistChip(onClick = { controller.openCollection(RecordCollection(item.name, "角色", mapOf("character_id" to item.id))) }, label = { Text(item.name) }) }
+                                items(record.itemTypes) { item -> AssistChip(onClick = { controller.openCatalogRef("item_type", item) }, label = { Text(item.name) }) }
+                                items(record.works) { item -> AssistChip(onClick = { controller.openCatalogRef("work", item) }, label = { Text(item.name) }) }
+                                items(record.characters) { item -> AssistChip(onClick = { controller.openCatalogRef("character", item) }, label = { Text(item.name) }) }
                             }
                         }
                     }

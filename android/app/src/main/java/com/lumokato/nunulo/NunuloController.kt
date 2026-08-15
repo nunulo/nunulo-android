@@ -36,6 +36,28 @@ internal data class RecordCollection(
     val topic: TopicItem? = null,
 )
 
+internal fun catalogCollectionForEntity(entity: CatalogEntityItem): RecordCollection = RecordCollection(
+    title = entity.canonicalName,
+    subtitle = "${entity.recordCount} 条记录",
+    filters = mapOf("${entity.entityType}_id" to entity.id),
+    catalogEntity = entity,
+)
+
+internal fun catalogCollectionForRef(
+    catalog: Map<String, List<CatalogEntityItem>>,
+    entityType: String,
+    ref: CatalogRef,
+): RecordCollection {
+    val entity = catalog[entityType].orEmpty().firstOrNull { it.id == ref.id }
+    if (entity != null) return catalogCollectionForEntity(entity)
+    val typeLabel = CatalogTypeFilter.entries.firstOrNull { it.key == entityType }?.label ?: "目录"
+    return RecordCollection(
+        title = ref.name,
+        subtitle = typeLabel,
+        filters = mapOf("${entityType}_id" to ref.id),
+    )
+}
+
 internal class DetailRequestGate {
     private var version = 0
 
@@ -1253,14 +1275,11 @@ internal class NunuloController(
     }
 
     fun openCatalog(entity: CatalogEntityItem) {
-        openCollection(
-            RecordCollection(
-                entity.canonicalName,
-                "${entity.recordCount} 条记录",
-                mapOf("${entity.entityType}_id" to entity.id),
-                catalogEntity = entity,
-            ),
-        )
+        openCollection(catalogCollectionForEntity(entity))
+    }
+
+    fun openCatalogRef(entityType: String, ref: CatalogRef) {
+        openCollection(catalogCollectionForRef(discovery.catalog, entityType, ref))
     }
 
     fun saveEvent(id: String?, name: String, type: String, visibility: String, placeId: String?, seriesId: String?, startsAt: String?, endsAt: String?, description: String, onSuccess: () -> Unit = {}) {

@@ -72,6 +72,27 @@ class CatalogBrowseTest {
         )
     }
 
+    @Test
+    fun recordDetailCatalogLinksReuseTheFormalEntityPageWhenAvailable() {
+        val catalog = mapOf("work" to listOf(work), "group" to listOf(group), "character" to listOf(character))
+
+        val collection = catalogCollectionForRef(catalog, "character", CatalogRef("tomori", "高松灯"))
+
+        assertEquals(character, collection.catalogEntity)
+        assertEquals("高松灯", collection.title)
+        assertEquals(mapOf("character_id" to "tomori"), collection.filters)
+    }
+
+    @Test
+    fun recordDetailCatalogLinksKeepAUsableFallbackForOlderCatalogResponses() {
+        val collection = catalogCollectionForRef(emptyMap(), "work", CatalogRef("legacy-work", "旧作品"))
+
+        assertEquals(null, collection.catalogEntity)
+        assertEquals("旧作品", collection.title)
+        assertEquals("作品", collection.subtitle)
+        assertEquals(mapOf("work_id" to "legacy-work"), collection.filters)
+    }
+
     private fun record(
         id: String,
         userId: Int,
