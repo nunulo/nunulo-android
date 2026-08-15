@@ -372,6 +372,7 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
     var editDraftConflictOpen by rememberSaveable(record.id) { mutableStateOf(false) }
     var deleteConfirmOpen by rememberSaveable(record.id) { mutableStateOf(false) }
     var removingPartnerId by rememberSaveable(record.id) { mutableStateOf<String?>(null) }
+    var deletingCommentId by rememberSaveable(record.id) { mutableStateOf<String?>(null) }
     var partnerCode by rememberSaveable(record.id) { mutableStateOf("") }
     if (reportOpen) {
         AlertDialog(
@@ -427,6 +428,21 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
             return
         }
         removingPartnerId = null
+    }
+    deletingCommentId?.let { commentId ->
+        val commentToDelete = controller.comments.firstOrNull { it.id == commentId }
+        if (commentToDelete != null) {
+            CommentDeleteConfirmationDialog(
+                deleting = controller.isDeletingComment(commentToDelete),
+                onConfirm = {
+                    if (!controller.isDeletingComment(commentToDelete)) {
+                        controller.deleteComment(record, commentToDelete) { deletingCommentId = null }
+                    }
+                },
+                onDismiss = { if (!controller.isDeletingComment(commentToDelete)) deletingCommentId = null },
+            )
+            return
+        }
     }
     Dialog(onDismissRequest = controller::closeRecord, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
@@ -563,10 +579,12 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                         Text("还没有评论，写下第一条回应吧。", color = NunuloColors.Muted, modifier = Modifier.padding(horizontal = 4.dp))
                     }
                     else -> items(controller.comments, key = { it.id }) { item ->
-                        Column(Modifier.fillMaxWidth().background(NunuloColors.Paper, RoundedCornerShape(18.dp)).padding(12.dp)) {
-                            Text(item.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                            Text(item.body)
-                        }
+                        CommentCard(
+                            comment = item,
+                            canDelete = controller.canDeleteComment(record, item),
+                            deleting = controller.isDeletingComment(item),
+                            onDelete = { deletingCommentId = item.id },
+                        )
                     }
                 }
                 item {
@@ -596,6 +614,38 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
             }
         }
     }
+}
+
+@Composable
+internal fun CommentCard(
+    comment: CommentItem,
+    canDelete: Boolean,
+    deleting: Boolean,
+    onDelete: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().background(NunuloColors.Paper, RoundedCornerShape(18.dp)).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(comment.displayName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            if (canDelete) {
+                TextButton(enabled = !deleting, onClick = onDelete) {
+                    Text(if (deleting) "删除中" else "删除", color = NunuloColors.Danger)
+                }
+            }
+        }
+        Text(comment.body)
+        Text(shortDate(comment.createdAt), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+internal fun CommentDeleteConfirmationDialog(deleting: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    ConfirmActionDialog(
+        title = "删除这条评论？",
+        body = "评论会从这条记录中移除，记录、照片、点赞和其他评论都会保留。",
+        confirmLabel = if (deleting) "删除中" else "删除评论",
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable

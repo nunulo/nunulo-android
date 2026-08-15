@@ -137,6 +137,41 @@ class ApiTest {
     }
 
     @Test
+    fun commentsKeepAuthorIdentityAndUseDeleteRoute() = runBlocking {
+        val requests = mutableListOf<Pair<String, String>>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            requests += request.method to request.url.encodedPath
+            val json = if (request.method == "GET") {
+                """{"items":[{"id":"comment-1","user_id":42,"display_name":"旅行收藏者","body":"一起去拍照","created_at":"2026-08-15T01:00:00Z"}]}"""
+            } else {
+                """{"deleted":true,"id":"comment-1"}"""
+            }
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(json.toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        val api = NunuloApi(client)
+
+        val comment = api.listComments("https://nunulo.test", "access", "record-1").single()
+        api.deleteComment("https://nunulo.test", "access", comment.id)
+
+        assertEquals(42, comment.userId)
+        assertEquals("旅行收藏者", comment.displayName)
+        assertEquals(
+            listOf(
+                "GET" to "/api/checkins/record-1/comments",
+                "DELETE" to "/api/comments/comment-1",
+            ),
+            requests,
+        )
+    }
+
+    @Test
     fun passwordChangeRequiresCurrentPasswordEightCharactersAndMatchingConfirmation() {
         assertFalse(passwordChangeReady("", "new-pass-8", "new-pass-8"))
         assertFalse(passwordChangeReady("old-pass", "short", "short"))

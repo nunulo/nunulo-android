@@ -372,6 +372,50 @@ fun RecordCommentsFailureScreenshot() = ScreenshotFrame(AppTab.Feed) {
 }
 
 @PreviewTest
+@Preview(name = "comment_owner_actions_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun CommentOwnerActionsScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("评论", style = MaterialTheme.typography.titleLarge) }
+        item {
+            CommentCard(
+                comment = CommentItem(
+                    id = "comment-own",
+                    userId = 8,
+                    displayName = "旅行收藏者",
+                    body = "灯灯也来过这里！下次一起带伙伴去看现场。",
+                    createdAt = "2026-08-15T01:00:00Z",
+                ),
+                canDelete = true,
+                deleting = false,
+                onDelete = {},
+            )
+        }
+        item {
+            CommentCard(
+                comment = CommentItem(
+                    id = "comment-other",
+                    userId = 9,
+                    displayName = "小灯的旅行册",
+                    body = "约在下一场演出见。",
+                    createdAt = "2026-08-14T18:30:00Z",
+                ),
+                canDelete = false,
+                deleting = false,
+                onDelete = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "comment_delete_confirm_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun CommentDeleteConfirmationScreenshot() = NunuloTheme {
+    CommentDeleteConfirmationDialog(deleting = false, onConfirm = {}, onDismiss = {})
+}
+
+@PreviewTest
 @Preview(name = "profile_member_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun ProfileMemberScreenshot() = ScreenshotFrame(AppTab.Profile) {

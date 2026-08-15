@@ -204,6 +204,8 @@ internal class NunuloController(
         private set
     var commentingRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
+    var deletingCommentIds by mutableStateOf<Set<String>>(emptySet())
+        private set
     var reportingRecordIds by mutableStateOf<Set<String>>(emptySet())
         private set
     var partnerRequestRecordIds by mutableStateOf<Set<String>>(emptySet())
@@ -661,6 +663,7 @@ internal class NunuloController(
         markingNotificationIds = emptySet()
         likingRecordIds = emptySet()
         commentingRecordIds = emptySet()
+        deletingCommentIds = emptySet()
         reportingRecordIds = emptySet()
         partnerRequestRecordIds = emptySet()
         resolvingPartnerRequestKeys = emptySet()
@@ -968,6 +971,29 @@ internal class NunuloController(
     }
 
     fun isCommenting(record: CheckinItem): Boolean = record.id in commentingRecordIds
+
+    fun canDeleteComment(record: CheckinItem, comment: CommentItem): Boolean =
+        canDeleteComment(currentUser?.id, record.userId, comment.userId)
+
+    fun deleteComment(record: CheckinItem, comment: CommentItem, onSuccess: () -> Unit = {}) {
+        if (!canDeleteComment(record, comment) || comment.id in deletingCommentIds) return
+        deletingCommentIds = deletingCommentIds + comment.id
+        coroutineScope.launch {
+            try {
+                authed { token -> api.deleteComment(apiBase, token, comment.id) }
+                comments = comments.filterNot { it.id == comment.id }
+                updateRecordEverywhere(record.copy(commentCount = (record.commentCount - 1).coerceAtLeast(0)))
+                message = "评论已删除"
+                onSuccess()
+            } catch (error: Exception) {
+                message = error.message ?: "评论删除失败"
+            } finally {
+                deletingCommentIds = deletingCommentIds - comment.id
+            }
+        }
+    }
+
+    fun isDeletingComment(comment: CommentItem): Boolean = comment.id in deletingCommentIds
 
     fun reportRecord(record: CheckinItem, reason: String, onSuccess: () -> Unit = {}) {
         if (reason.isBlank() || record.id in reportingRecordIds) return
@@ -1677,6 +1703,9 @@ internal class NunuloController(
         }
     }
 }
+
+internal fun canDeleteComment(viewerUserId: Int?, recordUserId: Int, commentUserId: Int): Boolean =
+    viewerUserId != null && (viewerUserId == commentUserId || viewerUserId == recordUserId)
 
 internal fun markNotificationsReadLocally(
     notifications: List<NotificationItem>,

@@ -40,7 +40,7 @@ internal data class PublicConfig(
     val privacyUrl: String,
 )
 
-internal data class CommentItem(val id: String, val displayName: String, val body: String, val createdAt: String?)
+internal data class CommentItem(val id: String, val userId: Int, val displayName: String, val body: String, val createdAt: String?)
 internal data class NotificationItem(val id: String, val title: String, val body: String, val targetType: String?, val targetId: String?, val readAt: String?, val createdAt: String?)
 internal data class PersonItem(
     val id: Int,
@@ -238,6 +238,10 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
                     .post(JSONObject().put("body", body.trim()).jsonBody()).build()
             )
         )
+    }
+
+    suspend fun deleteComment(apiBase: String, token: String, commentId: String) = withContext(Dispatchers.IO) {
+        executeJson(authorized(apiBase, "/api/comments/$commentId", token).delete().build())
     }
 
     suspend fun reportCheckin(apiBase: String, token: String, checkinId: String, reason: String) = withContext(Dispatchers.IO) {
@@ -575,6 +579,7 @@ internal fun parseAuthUser(json: JSONObject): AuthUser = AuthUser(
 
 private fun parseComment(json: JSONObject) = CommentItem(
     id = json.getString("id"),
+    userId = json.optInt("user_id"),
     displayName = json.optString("display_name", "Nunulo 成员"),
     body = json.getString("body"),
     createdAt = json.optionalString("created_at"),
