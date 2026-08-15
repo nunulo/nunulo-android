@@ -71,6 +71,52 @@ class ApiTest {
     }
 
     @Test
+    fun accountSecurityUsesExactPayloadsAndKeepsCurrentRefreshToken() = runBlocking {
+        val requests = mutableListOf<Triple<String, String, String?>>()
+        val bodies = mutableListOf<JSONObject>()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            requests += Triple(request.method, request.url.encodedPath, request.header("Authorization"))
+            bodies += JSONObject(request.body?.let { body ->
+                val buffer = okio.Buffer()
+                body.writeTo(buffer)
+                buffer.readUtf8()
+            }.orEmpty())
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("{}".toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        val api = NunuloApi(client)
+
+        api.changePassword("https://nunulo.test", "access", "old-pass", "new-pass-8", "refresh")
+        api.logout("https://nunulo.test", "refresh")
+
+        assertEquals(
+            listOf(
+                Triple("POST", "/api/auth/change-password", "Bearer access"),
+                Triple("POST", "/api/auth/logout", null),
+            ),
+            requests,
+        )
+        assertEquals("old-pass", bodies[0].getString("current_password"))
+        assertEquals("new-pass-8", bodies[0].getString("new_password"))
+        assertEquals("refresh", bodies[0].getString("refresh_token"))
+        assertEquals(setOf("refresh_token"), bodies[1].keys().asSequence().toSet())
+    }
+
+    @Test
+    fun passwordChangeRequiresCurrentPasswordEightCharactersAndMatchingConfirmation() {
+        assertFalse(passwordChangeReady("", "new-pass-8", "new-pass-8"))
+        assertFalse(passwordChangeReady("old-pass", "short", "short"))
+        assertFalse(passwordChangeReady("old-pass", "new-pass-8", "different"))
+        assertTrue(passwordChangeReady("old-pass", "new-pass-8", "new-pass-8"))
+    }
+
+    @Test
     fun apiUrlNormalizesBaseWithoutChangingPath() {
         assertEquals("https://nunulo.test/api/checkins?limit=120", apiUrl(" https://nunulo.test/// ", "/api/checkins?limit=120"))
     }

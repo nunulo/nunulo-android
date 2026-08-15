@@ -190,6 +190,8 @@ internal class NunuloController(
         private set
     var profileSaving by mutableStateOf(false)
         private set
+    var passwordChanging by mutableStateOf(false)
+        private set
     var screenErrors by mutableStateOf<Map<AppTab, String>>(emptyMap())
         private set
     var notificationsError by mutableStateOf<String?>(null)
@@ -619,6 +621,7 @@ internal class NunuloController(
     }
 
     fun logout(nextMessage: String = "已退出登录") {
+        val tokenToRevoke = refreshToken
         accessToken = ""
         refreshToken = ""
         api.setAccessToken("")
@@ -666,9 +669,13 @@ internal class NunuloController(
         followingPersonIds = emptySet()
         unblockingPersonIds = emptySet()
         profileSaving = false
+        passwordChanging = false
         stateReady = false
         preferences.edit().remove("accessToken").remove("refreshToken").apply()
         message = nextMessage
+        if (tokenToRevoke.isNotBlank()) {
+            coroutineScope.launch { runCatching { api.logout(apiBase, tokenToRevoke) } }
+        }
     }
 
     fun loadFeed(nextScope: FeedScope = feedScope, nextOrder: FeedOrder = feedOrder) {
@@ -1411,6 +1418,22 @@ internal class NunuloController(
                 message = "已屏蔽 ${person.displayName}"
             } catch (error: Exception) {
                 message = error.message ?: "屏蔽失败"
+            }
+        }
+    }
+
+    fun changePassword(currentPassword: String, newPassword: String, onSuccess: () -> Unit = {}) {
+        if (passwordChanging) return
+        passwordChanging = true
+        coroutineScope.launch {
+            try {
+                authed { token -> api.changePassword(apiBase, token, currentPassword, newPassword, refreshToken) }
+                message = "密码已更新，其他设备需要重新登录"
+                onSuccess()
+            } catch (error: Exception) {
+                message = error.message ?: "密码修改失败"
+            } finally {
+                passwordChanging = false
             }
         }
     }

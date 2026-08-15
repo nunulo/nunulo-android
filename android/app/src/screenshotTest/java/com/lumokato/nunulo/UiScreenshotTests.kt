@@ -424,6 +424,31 @@ fun ProfileEditorScreenshot() = NunuloTheme {
 }
 
 @PreviewTest
+@Preview(name = "account_settings_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun AccountSettingsScreenshot() = ScreenshotFrame(AppTab.Profile) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { ProfileSectionTabs("settings", onSelect = {}) }
+        item {
+            AccountSettingsSection(
+                user = screenshotUser(roles = listOf("member")),
+                onChangePassword = {},
+                onOpenTerms = {},
+                onOpenPrivacy = {},
+                onLogout = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "password_editor_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PasswordEditorScreenshot() = NunuloTheme {
+    PasswordEditorPage(saving = false, onClose = {}, onSave = { _, _ -> })
+}
+
+@PreviewTest
 @Preview(name = "community_browse_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CommunityBrowseScreenshot() = ScreenshotFrame(AppTab.Profile) {

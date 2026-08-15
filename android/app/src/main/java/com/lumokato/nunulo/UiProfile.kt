@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -73,6 +74,9 @@ internal fun communityBrowseItems(
 internal fun memberRecordsFor(personId: Int, records: List<CheckinItem>): List<CheckinItem> =
     records.filter { it.userId == personId }
 
+internal fun passwordChangeReady(currentPassword: String, newPassword: String, confirmPassword: String): Boolean =
+    currentPassword.isNotBlank() && newPassword.length >= 8 && newPassword == confirmPassword
+
 @Composable
 internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Unit) {
     val user = controller.currentUser
@@ -87,6 +91,7 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
     var communityQuery by rememberSaveable { mutableStateOf("") }
     var communityMemberFilterName by rememberSaveable { mutableStateOf(CommunityMemberFilter.All.name) }
     var profileEditorOpen by rememberSaveable { mutableStateOf(false) }
+    var passwordEditorOpen by rememberSaveable { mutableStateOf(false) }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Surface(color = NunuloColors.Paper, shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
@@ -261,6 +266,15 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 onShareInvite = controller::shareInvite,
             )
         }
+        if (section == "settings") item {
+            AccountSettingsSection(
+                user = user,
+                onChangePassword = { passwordEditorOpen = true },
+                onOpenTerms = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, controller.publicConfig?.termsUrl ?: "/terms/")) },
+                onOpenPrivacy = { uriHandler.openUri(resolveAssetUrl(controller.baseUrl, controller.publicConfig?.privacyUrl ?: "/privacy/")) },
+                onLogout = controller::logout,
+            )
+        }
     }
     if (homeDeleteConfirm) {
         ConfirmActionDialog(
@@ -302,6 +316,17 @@ internal fun ProfileScreen(controller: NunuloController, onPickAvatar: () -> Uni
                 saving = controller.profileSaving,
                 onClose = { profileEditorOpen = false },
                 onSave = { displayName, bio -> controller.saveProfile(displayName, bio) { profileEditorOpen = false } },
+            )
+        }
+    }
+    if (passwordEditorOpen) {
+        Dialog(onDismissRequest = { if (!controller.passwordChanging) passwordEditorOpen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            PasswordEditorPage(
+                saving = controller.passwordChanging,
+                onClose = { passwordEditorOpen = false },
+                onSave = { currentPassword, newPassword ->
+                    controller.changePassword(currentPassword, newPassword) { passwordEditorOpen = false }
+                },
             )
         }
     }
@@ -688,6 +713,105 @@ internal fun DataAndInviteSection(
     }
 }
 
+@Composable
+internal fun AccountSettingsSection(
+    user: AuthUser?,
+    onChangePassword: () -> Unit,
+    onOpenTerms: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    SectionCard("账号与安全", "密码修改成功后保留当前设备登录，并让其他设备重新登录。") {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("登录身份", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+            Text(user?.username?.let { "@$it" } ?: user?.email.orEmpty().ifBlank { "当前 Nunulo 账号" }, fontWeight = FontWeight.Bold)
+        }
+        Button(onClick = onChangePassword, modifier = Modifier.fillMaxWidth()) { Text("修改密码") }
+        androidx.compose.material3.HorizontalDivider(color = NunuloColors.Hairline)
+        Text("规则与隐私", fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onOpenTerms) { Text("服务条款") }
+            TextButton(onClick = onOpenPrivacy) { Text("隐私政策") }
+        }
+        androidx.compose.material3.HorizontalDivider(color = NunuloColors.Hairline)
+        Text("退出只清除这台设备的登录状态；不会删除账号、记录、照片或伙伴。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) { Text("退出当前账号", color = NunuloColors.Danger) }
+    }
+}
+
+@Composable
+internal fun PasswordEditorPage(
+    saving: Boolean,
+    onClose: () -> Unit,
+    onSave: (String, String) -> Unit,
+) {
+    var currentPassword by rememberSaveable { mutableStateOf("") }
+    var newPassword by rememberSaveable { mutableStateOf("") }
+    var confirmPassword by rememberSaveable { mutableStateOf("") }
+    val valid = passwordChangeReady(currentPassword, newPassword, confirmPassword)
+    Surface(color = NunuloColors.Background, modifier = Modifier.fillMaxSize()) {
+        Column {
+            Surface(color = NunuloColors.Paper, shadowElevation = 2.dp) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RecordStamp("密", NunuloColors.MapBlue)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text("修改密码", style = MaterialTheme.typography.titleMedium)
+                        Text("更新账号凭据并退出其他设备", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                    }
+                    TextButton(enabled = !saving, onClick = onClose) { Text("关闭") }
+                }
+            }
+            LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f).fillMaxWidth().widthIn(max = 720.dp).align(Alignment.CenterHorizontally),
+            ) {
+                item {
+                    SectionCard("确认是你", "新密码至少 8 位。服务端成功前，这些输入会保留在当前页面。") {
+                        OutlinedTextField(
+                            value = currentPassword,
+                            onValueChange = { currentPassword = it },
+                            label = { Text("当前密码") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = newPassword,
+                            onValueChange = { newPassword = it },
+                            label = { Text("新密码（至少 8 位）") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            isError = newPassword.isNotBlank() && newPassword.length < 8,
+                            supportingText = {
+                                if (newPassword.isNotBlank() && newPassword.length < 8) Text("新密码还不足 8 位")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = confirmPassword,
+                            onValueChange = { confirmPassword = it },
+                            label = { Text("再次输入新密码") },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            isError = confirmPassword.isNotBlank() && newPassword != confirmPassword,
+                            supportingText = {
+                                if (confirmPassword.isNotBlank() && newPassword != confirmPassword) Text("两次输入的新密码不一致")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                item {
+                    Button(enabled = valid && !saving, onClick = { onSave(currentPassword, newPassword) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (saving) "正在更新密码" else "更新密码")
+                    }
+                }
+            }
+        }
+    }
+}
+
 internal fun ExportItem.canDownload(): Boolean = status.lowercase() in setOf("available", "ready", "completed")
 
 internal fun exportStatusLabel(status: String): String = when (status.lowercase()) {
@@ -704,7 +828,7 @@ internal fun exportCreatedLabel(export: ExportItem): String =
 @Composable
 internal fun ProfileSectionTabs(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
     LazyRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        items(listOf("footprint" to "足迹", "collection" to "收藏", "community" to "社区", "data" to "数据")) { option ->
+        items(listOf("footprint" to "足迹", "collection" to "收藏", "community" to "社区", "data" to "数据", "settings" to "设置")) { option ->
             FilterChip(selected = selected == option.first, onClick = { onSelect(option.first) }, label = { Text(option.second) })
         }
     }

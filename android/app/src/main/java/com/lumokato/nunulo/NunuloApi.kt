@@ -136,6 +136,29 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         executeJson(Request.Builder().url(apiUrl(apiBase, "/api/auth/refresh")).post(payload.jsonBody()).build()).getString("access_token")
     }
 
+    suspend fun logout(apiBase: String, refreshToken: String) = withContext(Dispatchers.IO) {
+        executeJson(
+            Request.Builder()
+                .url(apiUrl(apiBase, "/api/auth/logout"))
+                .post(JSONObject().put("refresh_token", refreshToken).jsonBody())
+                .build()
+        )
+    }
+
+    suspend fun changePassword(
+        apiBase: String,
+        token: String,
+        currentPassword: String,
+        newPassword: String,
+        refreshToken: String,
+    ) = withContext(Dispatchers.IO) {
+        executeJson(
+            authorized(apiBase, "/api/auth/change-password", token)
+                .post(changePasswordPayload(currentPassword, newPassword, refreshToken).jsonBody())
+                .build()
+        )
+    }
+
     suspend fun me(apiBase: String, token: String): AuthUser = withContext(Dispatchers.IO) {
         parseAuthUser(executeJson(authorized(apiBase, "/api/auth/me", token).get().build()).getJSONObject("user"))
     }
@@ -593,6 +616,11 @@ internal fun albumPayload(title: String, description: String, visibility: String
 internal fun profilePayload(displayName: String, bio: String) = JSONObject()
     .put("display_name", displayName.trim())
     .put("bio", bio.trim())
+
+internal fun changePasswordPayload(currentPassword: String, newPassword: String, refreshToken: String) = JSONObject()
+    .put("current_password", currentPassword)
+    .put("new_password", newPassword)
+    .put("refresh_token", refreshToken)
 
 private fun parseExport(json: JSONObject) = ExportItem(
     id = json.getString("id"),
