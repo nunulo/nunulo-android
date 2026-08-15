@@ -32,6 +32,7 @@ internal data class RecordCollection(
     val event: EventItem? = null,
     val catalogEntity: CatalogEntityItem? = null,
     val album: AlbumItem? = null,
+    val region: WorldRegionItem? = null,
 )
 
 internal class DetailRequestGate {
@@ -1298,7 +1299,14 @@ internal class NunuloController(
     }
 
     fun openRegion(region: WorldRegionItem) {
-        openCollection(RecordCollection(region.name, "${region.recordCount} 条 · ${region.userCount} 人", mapOf("region" to region.name, "world_only" to "true")))
+        openCollection(
+            RecordCollection(
+                title = region.name,
+                subtitle = "${region.recordCount} 条 · ${region.userCount} 人",
+                filters = mapOf("region" to region.name, "world_only" to "true"),
+                region = region,
+            )
+        )
     }
 
     fun createPlace(name: String, latitude: Double, longitude: Double, onSuccess: (PlaceItem) -> Unit = {}) {

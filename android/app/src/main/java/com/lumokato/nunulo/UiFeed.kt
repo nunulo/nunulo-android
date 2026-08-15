@@ -61,6 +61,14 @@ internal fun FeedScreen(controller: NunuloController) {
                             onFollow = { controller.toggleCatalogFollow(entity) },
                             onBack = controller::loadFeed,
                         )
+                    } ?: target.region?.let { region ->
+                        RegionCollectionHeader(
+                            region = region,
+                            records = controller.feedItems,
+                            loading = controller.collectionLoading,
+                            onOpenRecord = controller::openRecord,
+                            onBack = controller::loadFeed,
+                        )
                     } ?: SectionCard(target.title, target.subtitle) {
                             TextButton(onClick = { controller.loadFeed() }) { Text("返回动态") }
                         }
@@ -138,6 +146,84 @@ internal fun FeedScreen(controller: NunuloController) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun RegionCollectionHeader(
+    region: WorldRegionItem,
+    records: List<CheckinItem>,
+    loading: Boolean = false,
+    onOpenRecord: (CheckinItem) -> Unit,
+    onBack: () -> Unit,
+) {
+    var mapOpen by rememberSaveable(region.key) { mutableStateOf(false) }
+    val places = regionCollectionPlaces(records)
+    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp("地", NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text(region.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        listOfNotNull(region.city, region.province, region.countryCode).distinct().joinToString(" · ").ifBlank { "世界发现地区" },
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                EventHeaderTag("世界发现")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EventHeaderTag("${region.recordCount} 条记录")
+                EventHeaderTag("${region.userCount} 位成员")
+                EventHeaderTag(if (loading && places.isEmpty()) "地点同步中" else "${places.size} 个地点")
+            }
+            Text("这里只汇总明确加入世界发现且达到公开阈值的记录。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            if (loading && places.isEmpty()) {
+                Text("正在整理这个地区的地点与记录…", color = NunuloColors.Muted)
+            } else if (places.isEmpty()) {
+                Text("当前加载的记录还没有可显示地点。", color = NunuloColors.Muted)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("去过的地点", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { mapOpen = !mapOpen }) { Text(if (mapOpen) "收起地图" else "查看地图") }
+                }
+                if (mapOpen) {
+                    FootprintMap(
+                        home = null,
+                        items = places.map { place ->
+                            FootprintItem(
+                                checkinId = place.representativeRecordId,
+                                placeId = place.id,
+                                placeName = place.name,
+                                latitude = place.latitude,
+                                longitude = place.longitude,
+                                takenAt = null,
+                                thumbUrl = place.representativeThumbUrl,
+                            )
+                        },
+                        onOpen = { item -> records.firstOrNull { it.id == item.checkinId }?.let(onOpenRecord) },
+                    )
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(places, key = RegionPlaceSummary::id) { place ->
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.width(210.dp).clickable {
+                                records.firstOrNull { it.id == place.representativeRecordId }?.let(onOpenRecord)
+                            },
+                        ) {
+                            Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(place.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${place.recordCount} 条记录 · ${formatCoordinate(place.latitude, place.longitude)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("返回动态") }
         }
     }
 }

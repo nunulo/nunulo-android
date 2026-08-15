@@ -324,6 +324,36 @@ internal fun catalogCollectionStats(records: List<CheckinItem>): CatalogCollecti
     eventCount = records.flatMap(CheckinItem::events).map(EventItem::id).distinct().size,
 )
 
+internal data class RegionPlaceSummary(
+    val id: String,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val recordCount: Int,
+    val representativeRecordId: String,
+    val representativeThumbUrl: String?,
+)
+
+internal fun regionCollectionPlaces(records: List<CheckinItem>): List<RegionPlaceSummary> = records
+    .filter { it.latitude != null && it.longitude != null }
+    .groupBy { record ->
+        record.placeId?.takeIf(String::isNotBlank)
+            ?: "${record.placeName.trim().lowercase()}@${record.latitude},${record.longitude}"
+    }
+    .map { (id, groupedRecords) ->
+        val representative = groupedRecords.first()
+        RegionPlaceSummary(
+            id = id,
+            name = representative.placeName.ifBlank { "未命名地点" },
+            latitude = representative.latitude!!,
+            longitude = representative.longitude!!,
+            recordCount = groupedRecords.size,
+            representativeRecordId = representative.id,
+            representativeThumbUrl = representative.thumbUrl ?: representative.displayUrl,
+        )
+    }
+    .sortedWith(compareByDescending<RegionPlaceSummary>(RegionPlaceSummary::recordCount).thenBy(RegionPlaceSummary::name))
+
 internal data class TopicItem(
     val id: String,
     val title: String,
@@ -380,6 +410,7 @@ internal data class CheckinItem(
     val authorName: String = "我",
     val photoIds: List<String> = emptyList(),
     val photos: List<PhotoItem> = emptyList(),
+    val placeId: String? = null,
     val placeName: String,
     val note: String,
     val latitude: Double?,
@@ -572,12 +603,14 @@ internal fun parseCheckin(json: JSONObject): CheckinItem {
     val author = json.optJSONObject("author")
     val interaction = json.optJSONObject("interaction")
     val catalog = json.optJSONObject("catalog")
+    val place = json.optJSONObject("place")
     return CheckinItem(
         id = json.getString("id"),
         userId = json.optInt("user_id"),
         authorName = author?.optString("display_name")?.takeIf(String::isNotBlank) ?: "我",
         photoIds = json.optJSONArray("photo_ids").stringItems(),
         photos = photos,
+        placeId = place?.optionalString("id"),
         placeName = json.optString("place_name"),
         note = json.optString("note"),
         latitude = json.optionalDouble("latitude"),

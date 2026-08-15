@@ -945,6 +945,45 @@ fun EventCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
 }
 
 @PreviewTest
+@Preview(name = "region_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun RegionCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            RegionCollectionHeader(
+                region = WorldRegionItem(
+                    key = "CN-Beijing",
+                    name = "北京",
+                    countryCode = "CN",
+                    province = "北京市",
+                    city = "北京",
+                    recordCount = 42,
+                    userCount = 8,
+                    latitude = 39.9042,
+                    longitude = 116.4074,
+                    representativeThumbUrl = null,
+                    eligible = true,
+                ),
+                records = listOf(
+                    screenshotRecord().copy(placeId = "place-1"),
+                    screenshotRecord().copy(id = "record-2", userId = 11, placeId = "place-1"),
+                    screenshotRecord().copy(
+                        id = "record-3",
+                        userId = 12,
+                        placeId = "place-2",
+                        placeName = "国家体育馆南广场",
+                        latitude = 39.9992,
+                        longitude = 116.3907,
+                    ),
+                ),
+                onOpenRecord = {},
+                onBack = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_relations_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
