@@ -984,6 +984,31 @@ fun RegionCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
 }
 
 @PreviewTest
+@Preview(name = "topic_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun TopicCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            TopicCollectionHeader(
+                topic = TopicItem(
+                    id = "topic-live-summer",
+                    title = "和伙伴一起去看夏日现场",
+                    description = "收录成员带着伙伴抵达演出、场外合影和散场后的真实记录。",
+                    status = "published",
+                    checkinIds = listOf("record-1", "record-2", "record-3"),
+                ),
+                records = listOf(
+                    screenshotRecord(),
+                    screenshotRecord().copy(id = "record-2", userId = 11, placeId = "place-2", placeName = "国家体育馆南广场"),
+                    screenshotRecord().copy(id = "record-3", userId = 12, placeId = "place-3", placeName = "上海梅赛德斯奔驰文化中心"),
+                ),
+                onBack = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_relations_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {

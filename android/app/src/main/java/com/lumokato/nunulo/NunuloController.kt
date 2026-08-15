@@ -33,6 +33,7 @@ internal data class RecordCollection(
     val catalogEntity: CatalogEntityItem? = null,
     val album: AlbumItem? = null,
     val region: WorldRegionItem? = null,
+    val topic: TopicItem? = null,
 )
 
 internal class DetailRequestGate {
@@ -1295,7 +1296,15 @@ internal class NunuloController(
     }
 
     fun openTopic(topic: TopicItem) {
-        openCollection(RecordCollection(topic.title, topic.description, checkinIds = topic.checkinIds, explicitCheckinIds = true))
+        openCollection(
+            RecordCollection(
+                title = topic.title,
+                subtitle = topic.description,
+                checkinIds = topic.checkinIds,
+                explicitCheckinIds = true,
+                topic = topic,
+            )
+        )
     }
 
     fun openRegion(region: WorldRegionItem) {

@@ -69,6 +69,13 @@ internal fun FeedScreen(controller: NunuloController) {
                             onOpenRecord = controller::openRecord,
                             onBack = controller::loadFeed,
                         )
+                    } ?: target.topic?.let { topic ->
+                        TopicCollectionHeader(
+                            topic = topic,
+                            records = controller.feedItems,
+                            loading = controller.collectionLoading,
+                            onBack = controller::loadFeed,
+                        )
                     } ?: SectionCard(target.title, target.subtitle) {
                             TextButton(onClick = { controller.loadFeed() }) { Text("返回动态") }
                         }
@@ -146,6 +153,47 @@ internal fun FeedScreen(controller: NunuloController) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun TopicCollectionHeader(
+    topic: TopicItem,
+    records: List<CheckinItem>,
+    loading: Boolean = false,
+    onBack: () -> Unit,
+) {
+    val stats = catalogCollectionStats(records)
+    Surface(color = NunuloColors.Lilac, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp("题", NunuloColors.Coral)
+                Column(Modifier.weight(1f)) {
+                    Text(topic.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("Nunulo 专题收录", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                EventHeaderTag(if (topic.status in setOf("active", "published")) "已发布" else "整理中")
+            }
+            if (topic.description.isNotBlank()) {
+                Text(topic.description, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EventHeaderTag("${topic.checkinIds.size} 条收录")
+                EventHeaderTag(if (loading && records.isEmpty()) "正在读取" else "当前可见 ${records.size} 条")
+            }
+            Surface(color = NunuloColors.Paper, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("专题里的真实足迹", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (loading && records.isEmpty()) "正在整理成员、伙伴与地点…" else "${stats.memberCount} 位成员 · ${stats.partnerCount} 位伙伴 · ${stats.placeCount} 个地点",
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Text("专题只负责收录，原记录、照片、作者和互动都保持不变。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("返回动态") }
         }
     }
 }
