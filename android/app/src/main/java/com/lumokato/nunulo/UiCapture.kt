@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.amap.api.maps.CameraUpdateFactory
@@ -172,26 +174,21 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
         }
         if (step == CaptureStep.Relations) item {
             SectionCard("伙伴", "选择自己的伙伴可自动继承其物件类型、作品与角色；一条合照可登记多个伙伴。") {
-                if (controller.partners.isEmpty()) Text("还没有伙伴，可先发布后补登记，或到伙伴页创建。", color = NunuloColors.Muted)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(controller.partners, key = { it.id }) { partner ->
-                        FilterChip(
-                            selected = partner.id in draft.partnerIds,
-                            onClick = {
-                                val selected = toggleId(draft.partnerIds, partner.id)
-                                controller.updateDraft(
-                                    draft.copy(
-                                        partnerIds = selected,
-                                        itemTypeIds = if (partner.id !in draft.partnerIds) (draft.itemTypeIds + listOfNotNull(partner.itemType?.id)).distinct() else draft.itemTypeIds,
-                                        workIds = if (partner.id !in draft.partnerIds) (draft.workIds + listOfNotNull(partner.work?.id)).distinct() else draft.workIds,
-                                        characterIds = if (partner.id !in draft.partnerIds) (draft.characterIds + listOfNotNull(partner.character?.id)).distinct() else draft.characterIds,
-                                    )
-                                )
-                            },
-                            label = { Text(partner.name) },
+                CapturePartnerSelection(
+                    partners = controller.partners,
+                    selected = draft.partnerIds,
+                    onToggle = { partner ->
+                        val adding = partner.id !in draft.partnerIds
+                        controller.updateDraft(
+                            draft.copy(
+                                partnerIds = toggleId(draft.partnerIds, partner.id),
+                                itemTypeIds = if (adding) (draft.itemTypeIds + listOfNotNull(partner.itemType?.id)).distinct() else draft.itemTypeIds,
+                                workIds = if (adding) (draft.workIds + listOfNotNull(partner.work?.id)).distinct() else draft.workIds,
+                                characterIds = if (adding) (draft.characterIds + listOfNotNull(partner.character?.id)).distinct() else draft.characterIds,
+                            )
                         )
-                    }
-                }
+                    },
+                )
             }
         }
         if (step == CaptureStep.Relations) item {
@@ -441,6 +438,53 @@ internal fun CatalogSelection(
     }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(matches, key = { it.id }) { item -> FilterChip(selected = item.id in selected, onClick = { onToggle(item.id) }, label = { Text(item.canonicalName) }) }
+    }
+}
+
+@Composable
+internal fun CapturePartnerSelection(
+    partners: List<PartnerItem>,
+    selected: List<String>,
+    onToggle: (PartnerItem) -> Unit,
+    initialQuery: String = "",
+) {
+    var query by rememberSaveable("capture-partner-query") { mutableStateOf(initialQuery) }
+    val matches = remember(partners, query, selected) {
+        filterPartners(partners, query, PartnerVisibilityFilter.All)
+            .sortedBy { it.id !in selected }
+    }
+    if (partners.isEmpty()) {
+        Text("还没有伙伴，可先发布后补登记，或到伙伴页创建。", color = NunuloColors.Muted)
+        return
+    }
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        label = { Text("查找要出镜的伙伴") },
+        placeholder = { Text("名称、编号、作品或角色") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        if (selected.isEmpty()) "尚未选择伙伴" else "已选择 ${selected.size} 位伙伴",
+        color = NunuloColors.Muted,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (matches.isEmpty()) {
+        Text("没有找到“${query.trim()}”；可以到伙伴页登记，或发布后用稳定编号补登记。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    } else {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(matches, key = PartnerItem::id) { partner ->
+                FilterChip(
+                    selected = partner.id in selected,
+                    onClick = { onToggle(partner) },
+                    label = { Text(partner.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp)) },
+                )
+            }
+        }
+    }
+    if (selected.isNotEmpty()) {
+        Text("移除伙伴不会自动删除已经带入的作品与角色，仍可在下方类别中调整。", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
     }
 }
 

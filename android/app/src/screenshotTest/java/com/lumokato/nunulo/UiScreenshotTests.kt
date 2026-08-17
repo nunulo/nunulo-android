@@ -1076,7 +1076,14 @@ fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
         }
         item {
             SectionCard("伙伴", "选择后会带入它的作品与角色。") {
-                CoordinateTag("去过很多次演出的高松灯棉花娃娃")
+                CapturePartnerSelection(
+                    partners = listOf(
+                        screenshotPartner(),
+                        screenshotPartner().copy(id = "partner-2", name = "小彩", publicCode = "N-000017", character = CatalogRef("aya", "丸山彩")),
+                    ),
+                    selected = listOf("partner-1"),
+                    onToggle = {},
+                )
             }
         }
         item {
