@@ -894,6 +894,20 @@ internal class NunuloController(
         }
     }
 
+    fun quickPublishPrivate() {
+        if (!draft.canQuickPublishPrivate()) {
+            message = "相机单图上传完成后才能快速发布"
+            return
+        }
+        draft = draft.copy(
+            visibility = "private",
+            worldVisible = false,
+            publicShowcase = false,
+        )
+        persistDraft()
+        saveDraft()
+    }
+
     fun deleteRecord(record: CheckinItem) {
         if (record.id in deletingRecordIds) return
         deletingRecordIds = deletingRecordIds + record.id
@@ -1806,6 +1820,9 @@ internal fun validateDraft(draft: UploadDraft): DraftValidation {
     }
     return DraftValidation(photoCount, allReady, coordinatesValid, ready, missing)
 }
+
+internal fun UploadDraft.canQuickPublishPrivate(): Boolean =
+    editingId == null && photos.size == 1 && photos.single().captureSource == "camera" && validateDraft(this).ready
 
 internal fun UploadDraft.updatePhoto(key: String, transform: (DraftPhotoItem) -> DraftPhotoItem): UploadDraft =
     copy(photos = photos.map { if (it.key == key) transform(it) else it })

@@ -128,6 +128,12 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                             )
                         }
                     }
+                    if (draft.canQuickPublishPrivate()) {
+                        QuickPrivatePublishCard(
+                            publishing = controller.busy,
+                            onPublish = controller::quickPublishPrivate,
+                        )
+                    }
                 }
             }
         }
@@ -388,6 +394,29 @@ internal fun DraftRecoverySummary(photos: List<DraftPhotoItem>, onRetryFailed: (
             )
             Text("已成功的照片不会重传；草稿、顺序和请求号会保留。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
             if (failed > 0) TextButton(onClick = onRetryFailed, contentPadding = PaddingValues(0.dp)) { Text("重试失败照片") }
+        }
+    }
+}
+
+@Composable
+internal fun QuickPrivatePublishCard(
+    publishing: Boolean,
+    onPublish: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(18.dp), modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecordStamp("快", NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text("现场单图已经就绪", fontWeight = FontWeight.Black)
+                    Text("保留照片时间与 GNSS，默认只让自己看到；发布后仍可补伙伴、作品、说明和活动。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Button(enabled = !publishing, onClick = onPublish, modifier = Modifier.fillMaxWidth().height(46.dp)) {
+                Text(if (publishing) "发布中" else "仅自己可见并发布")
+            }
+            Text("想完整登记？使用下方“下一步”继续。", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

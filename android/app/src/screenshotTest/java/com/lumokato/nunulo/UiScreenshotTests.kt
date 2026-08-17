@@ -61,6 +61,22 @@ fun CaptureEmptyScreenshot() = ScreenshotFrame(AppTab.Capture) {
 }
 
 @PreviewTest
+@Preview(name = "capture_quick_private_360x800", widthDp = 360, heightDp = 800, showBackground = true)
+@Composable
+fun CaptureQuickPrivateScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("照片", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text("相机拍下的第一张照片已经安全上传", color = NunuloColors.Muted)
+                CaptureStepIndicator(CaptureStep.Photos)
+            }
+        }
+        item { QuickPrivatePublishCard(publishing = false, onPublish = {}) }
+    }
+}
+
+@PreviewTest
 @Preview(name = "catalog_no_result_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CatalogNoResultScreenshot() = ScreenshotFrame(AppTab.Partners) {
