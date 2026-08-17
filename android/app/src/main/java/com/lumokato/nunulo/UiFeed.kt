@@ -12,11 +12,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -30,8 +33,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -548,6 +553,51 @@ internal fun FeedRecordCard(
 }
 
 @Composable
+internal fun RecordPhotoGallery(
+    photos: List<PhotoItem>,
+    image: @Composable (PhotoItem, Modifier) -> Unit,
+) {
+    if (photos.isEmpty()) {
+        Surface(color = NunuloColors.Placeholder, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().height(260.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text("照片暂时没有加载出来", fontWeight = FontWeight.Bold)
+                Text("可以继续查看文字与关系，或稍后重新加载详情。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        return
+    }
+    val listState = rememberLazyListState()
+    val currentIndex by remember { derivedStateOf { listState.firstVisibleItemIndex.coerceIn(0, photos.lastIndex) } }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(photos, key = { _, photo -> photo.id }) { index, photo ->
+                Box(Modifier.width(310.dp)) {
+                    image(photo, Modifier.fillMaxWidth())
+                    Surface(
+                        color = NunuloColors.Ink.copy(alpha = 0.78f),
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                    ) {
+                        Text("${index + 1} / ${photos.size}", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${photos.size} 张照片 · 左右滑动查看", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                photos.indices.forEach { index ->
+                    Box(
+                        Modifier.size(if (index == currentIndex) 8.dp else 6.dp)
+                            .background(if (index == currentIndex) NunuloColors.Coral else NunuloColors.Hairline, RoundedCornerShape(50))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun RecordDetailDialog(controller: NunuloController, record: CheckinItem) {
     var comment by rememberSaveable(record.id) { mutableStateOf("") }
     var reportReason by rememberSaveable(record.id) { mutableStateOf("") }
@@ -657,10 +707,8 @@ internal fun RecordDetailDialog(controller: NunuloController, record: CheckinIte
                     }
                 }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(record.photos, key = { it.id }) { photo ->
-                            RemoteImage(photo.displayUrl ?: photo.thumbUrl ?: photo.originalUrl, controller.baseUrl, controller.mediaApi, modifier = Modifier.width(310.dp), aspect = 0.84f)
-                        }
+                    RecordPhotoGallery(record.photos) { photo, modifier ->
+                        RemoteImage(photo.displayUrl ?: photo.thumbUrl ?: photo.originalUrl, controller.baseUrl, controller.mediaApi, modifier = modifier, aspect = 0.84f)
                     }
                 }
                 item {

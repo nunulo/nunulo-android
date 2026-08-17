@@ -1189,6 +1189,27 @@ fun CaptureDetailsScreenshot() = ScreenshotFrame(AppTab.Capture) {
 }
 
 @PreviewTest
+@Preview(name = "record_photo_gallery_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun RecordPhotoGalleryScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            RecordPhotoGallery(listOf(PhotoItem("photo-1"), PhotoItem("photo-2"), PhotoItem("photo-3"))) { photo, modifier ->
+                Box(
+                    modifier.aspectRatio(0.84f).background(NunuloColors.Placeholder),
+                    contentAlignment = Alignment.Center,
+                ) { Text("演出现场照片 ${photo.id.takeLast(1)}", color = NunuloColors.Muted) }
+            }
+        }
+        item {
+            SectionCard("这一刻", "相册下方继续承接记录正文与关系。") {
+                Text("第一次带着伙伴一起看 MyGO!!!!! 的现场。")
+            }
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "record_interactions_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun RecordInteractionsScreenshot() = ScreenshotFrame(AppTab.Feed) {
