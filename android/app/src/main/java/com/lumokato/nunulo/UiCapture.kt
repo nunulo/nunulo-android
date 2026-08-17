@@ -57,6 +57,7 @@ import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.MarkerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.time.Instant
 
 internal enum class CaptureStep(val title: String, val hint: String) {
     Photos("照片", "先选好这次记录的 1–9 张照片"),
@@ -202,25 +203,20 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
         }
         if (step == CaptureStep.Details) item {
             SectionCard("活动", "一条记录最多关联一个线下活动，可同时关联多个线上生日合集。") {
-                if (controller.discovery.events.isEmpty()) Text("暂无可选活动，可在发现页创建。", color = NunuloColors.Muted)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(controller.discovery.events, key = { it.id }) { event ->
-                        FilterChip(
-                            selected = event.id in draft.eventIds,
-                            onClick = {
-                                val next = if (event.id in draft.eventIds) {
-                                    draft.eventIds - event.id
-                                } else if (event.eventType.startsWith("offline_")) {
-                                    draft.eventIds.filter { id -> controller.discovery.events.firstOrNull { it.id == id }?.eventType?.startsWith("offline_") != true } + event.id
-                                } else {
-                                    draft.eventIds + event.id
-                                }
-                                controller.updateDraft(draft.copy(eventIds = next.distinct()))
-                            },
-                            label = { Text(event.name) },
-                        )
-                    }
-                }
+                CaptureEventSelection(
+                    events = controller.discovery.events,
+                    selected = draft.eventIds,
+                    onToggle = { event ->
+                        val next = if (event.id in draft.eventIds) {
+                            draft.eventIds - event.id
+                        } else if (event.eventType.startsWith("offline_")) {
+                            draft.eventIds.filter { id -> controller.discovery.events.firstOrNull { it.id == id }?.eventType?.startsWith("offline_") != true } + event.id
+                        } else {
+                            draft.eventIds + event.id
+                        }
+                        controller.updateDraft(draft.copy(eventIds = next.distinct()))
+                    },
+                )
             }
         }
         if (step == CaptureStep.Confirm) item {
@@ -485,6 +481,72 @@ internal fun CapturePartnerSelection(
     }
     if (selected.isNotEmpty()) {
         Text("移除伙伴不会自动删除已经带入的作品与角色，仍可在下方类别中调整。", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+internal fun CaptureEventSelection(
+    events: List<EventItem>,
+    selected: List<String>,
+    onToggle: (EventItem) -> Unit,
+    now: Instant = Instant.now(),
+    initialQuery: String = "",
+) {
+    var query by rememberSaveable("capture-event-query") { mutableStateOf(initialQuery) }
+    var period by rememberSaveable("capture-event-period") { mutableStateOf(EventPeriodFilter.Upcoming) }
+    var kind by rememberSaveable("capture-event-kind") { mutableStateOf(EventKindFilter.All) }
+    if (events.isEmpty()) {
+        Text("暂无可选活动，可在发现页创建。", color = NunuloColors.Muted)
+        return
+    }
+    val selectedEvents = events.filter { it.id in selected }
+    val matches = remember(events, query, period, kind, selected, now) {
+        (selectedEvents + eventBrowseItems(events, query, period, kind, now)).distinctBy(EventItem::id)
+    }
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        label = { Text("查找活动") },
+        placeholder = { Text("活动名、地点或系列") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(EventPeriodFilter.entries) { filter ->
+            FilterChip(selected = period == filter, onClick = { period = filter }, label = { Text(filter.label) })
+        }
+    }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(EventKindFilter.entries) { filter ->
+            FilterChip(selected = kind == filter, onClick = { kind = filter }, label = { Text(filter.label) })
+        }
+    }
+    Text(
+        if (selected.isEmpty()) "尚未关联活动" else "已关联 ${selected.size} 个活动；已选项始终排在前面",
+        color = NunuloColors.Muted,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (matches.isEmpty()) {
+        Text("没有找到“${query.trim()}”；可切换往期或活动类型，也可以到发现页共建活动。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    } else {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(matches, key = EventItem::id) { event ->
+                FilterChip(
+                    selected = event.id in selected,
+                    onClick = { onToggle(event) },
+                    label = { Text(event.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp)) },
+                )
+            }
+        }
+    }
+    selectedEvents.forEach { event ->
+        Text(
+            "${event.name} · ${event.periodLabel(now)} · ${eventTypeLabel(event.eventType)}",
+            color = NunuloColors.MapBlue,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

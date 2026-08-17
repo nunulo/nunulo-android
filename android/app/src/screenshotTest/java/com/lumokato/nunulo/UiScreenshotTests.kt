@@ -1216,7 +1216,37 @@ fun CaptureDetailsScreenshot() = ScreenshotFrame(AppTab.Capture) {
         }
         item {
             SectionCard("活动", "线下活动最多一个，线上生日合集可以同时选择。") {
-                CoordinateTag("MyGO!!!!! 7th LIVE")
+                CaptureEventSelection(
+                    events = listOf(
+                        EventItem("event-live", "MyGO!!!!! 7th LIVE「こたえなんてなくても」", "offline_live", "public", "active", true, PlaceItem("place-1", "北京工人体育场", latitude = 39.9, longitude = 116.4), EventSeriesItem("series-1", "MyGO!!!!! 巡演", "active"), "2026-08-18T10:00:00Z", null, "", 18, false),
+                        EventItem("event-birthday", "高松灯生日照片合集", "online_birthday", "public", "active", true, null, null, "2026-08-20T00:00:00Z", null, "", 9, false),
+                    ),
+                    selected = listOf("event-live"),
+                    onToggle = {},
+                    now = Instant.parse("2026-08-14T12:00:00Z"),
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "capture_event_selection_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CaptureEventSelectionScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    val events = listOf(
+        EventItem("event-live", "MyGO!!!!! 7th LIVE「こたえなんてなくても」", "offline_live", "public", "active", true, PlaceItem("place-1", "北京工人体育场", latitude = 39.9, longitude = 116.4), EventSeriesItem("series-1", "MyGO!!!!! 巡演", "active"), "2026-08-10T10:00:00Z", null, "", 18, false),
+        EventItem("event-birthday", "高松灯生日照片合集", "online_birthday", "public", "active", true, null, null, "2026-08-20T00:00:00Z", null, "", 9, false),
+    )
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("关联活动", "可以按活动、地点或系列搜索；已选往期活动也不会被筛选隐藏。") {
+                CaptureEventSelection(
+                    events = events,
+                    selected = listOf("event-live"),
+                    onToggle = {},
+                    now = Instant.parse("2026-08-14T12:00:00Z"),
+                )
             }
         }
     }
