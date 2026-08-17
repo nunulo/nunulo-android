@@ -41,6 +41,9 @@ internal fun PartnersScreen(controller: NunuloController) {
     var editorOpen by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var searchCode by rememberSaveable { mutableStateOf("") }
+    var partnerQuery by rememberSaveable { mutableStateOf("") }
+    var visibilityFilter by rememberSaveable { mutableStateOf(PartnerVisibilityFilter.All) }
+    val visiblePartners = filterPartners(controller.partners, partnerQuery, visibilityFilter)
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         controller.screenError(AppTab.Partners)?.let { error ->
             item {
@@ -54,20 +57,30 @@ internal fun PartnersScreen(controller: NunuloController) {
             }
         }
         item {
-            Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("常伴出镜的伙伴", style = MaterialTheme.typography.titleLarge)
-                        Text("${controller.partners.size} 位伙伴 · 记录会自动带上它的作品与角色", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Button(onClick = { editingId = null; editorOpen = true }) { Text("登记") }
-                }
-                if (controller.partners.isEmpty()) EmptyState("从第一位伙伴开始", "登记后，每次记录都能直接选择，不必反复填写作品和角色。")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(controller.partners, key = { it.id }) { partner ->
-                        PartnerSummaryCard(partner = partner, onOpen = { controller.selectPartner(partner) }, image = { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi, aspect = 1.2f) })
-                    }
-                }
+            PartnerDirectoryHeader(
+                total = controller.partners.size,
+                visible = visiblePartners.size,
+                query = partnerQuery,
+                visibility = visibilityFilter,
+                onQueryChange = { partnerQuery = it },
+                onVisibilityChange = { visibilityFilter = it },
+                onCreate = { editingId = null; editorOpen = true },
+            )
+        }
+        if (visiblePartners.isEmpty()) {
+            item {
+                EmptyState(
+                    if (controller.partners.isEmpty()) "从第一位伙伴开始" else "没有找到这位伙伴",
+                    if (controller.partners.isEmpty()) "登记后，每次记录都能直接选择，不必反复填写作品和角色。" else "试试名称、稳定编号、作品或角色，也可以切换可见范围。",
+                )
+            }
+        } else {
+            items(visiblePartners, key = PartnerItem::id) { partner ->
+                PartnerDirectoryCard(
+                    partner = partner,
+                    onOpen = { controller.selectPartner(partner) },
+                    image = { RemoteImage(partner.coverUrl, controller.baseUrl, controller.mediaApi) },
+                )
             }
         }
         item {
@@ -108,6 +121,81 @@ internal fun PartnersScreen(controller: NunuloController) {
             initial = editingId?.let { id -> controller.partners.firstOrNull { it.id == id } },
             onDismiss = { editorOpen = false },
         )
+    }
+}
+
+@Composable
+internal fun PartnerDirectoryHeader(
+    total: Int,
+    visible: Int,
+    query: String,
+    visibility: PartnerVisibilityFilter,
+    onQueryChange: (String) -> Unit,
+    onVisibilityChange: (PartnerVisibilityFilter) -> Unit,
+    onCreate: () -> Unit,
+) {
+    Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("我的伙伴册", style = MaterialTheme.typography.titleLarge)
+                Text("$total 位伙伴 · 作品与角色会在记录时自动带入", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            }
+            Button(onClick = onCreate) { Text("登记伙伴") }
+        }
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            label = { Text("查找我的伙伴") },
+            placeholder = { Text("名称、编号、作品或角色") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(PartnerVisibilityFilter.entries) { filter ->
+                FilterChip(
+                    selected = visibility == filter,
+                    onClick = { onVisibilityChange(filter) },
+                    label = { Text(filter.label) },
+                )
+            }
+        }
+        Text(
+            if (query.isBlank() && visibility == PartnerVisibilityFilter.All) "按记录数排列" else "找到 $visible 位伙伴",
+            color = NunuloColors.Muted,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+internal fun PartnerDirectoryCard(
+    partner: PartnerItem,
+    onOpen: () -> Unit,
+    image: @Composable () -> Unit,
+) {
+    Surface(
+        color = NunuloColors.Paper,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, NunuloColors.Hairline),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    ) {
+        Row(
+            Modifier.padding(10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), modifier = Modifier.width(94.dp)) { image() }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(partner.name, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    CoordinateTag(partner.publicCode)
+                    Text(visibilityLabel(partner.visibility), color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+                }
+                val identity = listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name)
+                Text(identity.joinToString(" · ").ifBlank { "尚未关联作品或角色" }, color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("${partner.recordCount} 条记录 · 打开伙伴主页", color = NunuloColors.MapBlue, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 

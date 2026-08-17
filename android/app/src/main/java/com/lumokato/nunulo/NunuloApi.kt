@@ -274,8 +274,8 @@ internal class NunuloApi(private val client: OkHttpClient = defaultNunuloHttpCli
         executeJson(authorized(apiBase, path, token).get().build()).getJSONArray("items").objectItems(::parseWorldRegion)
     }
 
-    suspend fun listPartners(apiBase: String, token: String, q: String? = null): List<PartnerItem> = withContext(Dispatchers.IO) {
-        val path = queryPath("/api/partners", q?.takeIf(String::isNotBlank)?.let { mapOf("q" to it) } ?: emptyMap())
+    suspend fun listPartners(apiBase: String, token: String, q: String? = null, ownerUserId: Int? = null): List<PartnerItem> = withContext(Dispatchers.IO) {
+        val path = partnerListPath(q, ownerUserId)
         executeJson(authorized(apiBase, path, token).get().build()).getJSONArray("items").objectItems(::parsePartner)
     }
 
@@ -547,6 +547,14 @@ internal fun partnerRelationVisibilityPath(checkinId: String, partnerId: String)
     "/api/checkins/$checkinId/partners/$partnerId/visibility"
 
 internal fun eventListPath(includePast: Boolean): String = "/api/events?include_past=$includePast"
+
+internal fun partnerListPath(q: String? = null, ownerUserId: Int? = null): String = queryPath(
+    "/api/partners",
+    linkedMapOf(
+        "owner_user_id" to ownerUserId?.toString().orEmpty(),
+        "q" to q.orEmpty(),
+    ),
+)
 
 internal fun checkinFeedPath(scope: FeedScope, order: FeedOrder, filters: Map<String, String> = emptyMap()): String = queryPath(
     "/api/checkins",

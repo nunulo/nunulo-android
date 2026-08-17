@@ -192,6 +192,12 @@ class ApiTest {
     }
 
     @Test
+    fun partnerDirectoryCanRequestOnlyTheCurrentUsersPartners() {
+        assertEquals("/api/partners?owner_user_id=42", partnerListPath(ownerUserId = 42))
+        assertEquals("/api/partners?q=N-000042", partnerListPath(q = "N-000042"))
+    }
+
+    @Test
     fun eventArchiveRequestExplicitlyIncludesPastEvents() {
         assertEquals("/api/events?include_past=true", eventListPath(includePast = true))
     }

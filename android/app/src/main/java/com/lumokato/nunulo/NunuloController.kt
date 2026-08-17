@@ -315,7 +315,6 @@ internal class NunuloController(
                 }
             }
         }
-        val partnersRequest = async { runCatching { api.listPartners(apiBase, token) } }
         val partnerRequestsRequest = async { runCatching { api.listPartnerRequests(apiBase, token) } }
         val footprintRequest = async { runCatching { api.footprint(apiBase, token) } }
         val notificationsRequest = async { runCatching { api.listNotifications(apiBase, token) } }
@@ -327,6 +326,14 @@ internal class NunuloController(
         val eventSeriesRequest = async { runCatching { api.listEventSeries(apiBase, token) } }
 
         val userResult = userRequest.await()
+        val partnersRequest = async<Result<List<PartnerItem>>> {
+            val user = userResult.getOrNull()
+            if (user == null) {
+                Result.failure(userResult.exceptionOrNull() ?: IllegalStateException("当前用户资料没有加载成功"))
+            } else {
+                runCatching { api.listPartners(apiBase, token, ownerUserId = user.id) }
+            }
+        }
         val feedResult = feedRequest.await()
         val mineResult = mineRequest?.await() ?: feedResult
         val discoveryResult = discoveryRequest.await()

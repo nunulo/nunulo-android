@@ -99,6 +99,35 @@ internal data class PartnerItem(
     val relationVisibility: String = "public",
 )
 
+internal enum class PartnerVisibilityFilter(val key: String?, val label: String) {
+    All(null, "全部"),
+    Public("public", "全部成员"),
+    Followers("followers", "关注者"),
+    Private("private", "仅自己"),
+}
+
+internal fun filterPartners(
+    partners: List<PartnerItem>,
+    query: String,
+    visibility: PartnerVisibilityFilter,
+): List<PartnerItem> {
+    val needle = query.catalogSearchKey()
+    return partners
+        .asSequence()
+        .filter { partner -> visibility.key == null || partner.visibility == visibility.key }
+        .filter { partner ->
+            needle.isBlank() || sequenceOf(
+                partner.name,
+                partner.publicCode,
+                partner.itemType?.name.orEmpty(),
+                partner.work?.name.orEmpty(),
+                partner.character?.name.orEmpty(),
+            ).any { it.catalogSearchKey().contains(needle) }
+        }
+        .sortedWith(compareByDescending<PartnerItem> { it.recordCount }.thenBy(PartnerItem::name))
+        .toList()
+}
+
 internal data class PartnerRelationUiState(
     val confirmationLabel: String,
     val visibilityLabel: String,

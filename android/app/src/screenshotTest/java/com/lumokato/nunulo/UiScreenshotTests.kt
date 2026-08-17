@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -207,6 +208,32 @@ fun PartnerLongContentScreenshot() = ScreenshotFrame(AppTab.Partners) {
                     )
                 }
             }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "partner_directory_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerDirectoryScreenshot() = ScreenshotFrame(AppTab.Partners) {
+    val partners = listOf(
+        screenshotPartner().copy(name = "去过很多次演出的高松灯棉花娃娃", publicCode = "N-000042", recordCount = 18),
+        screenshotPartner().copy(id = "partner-2", name = "小彩", publicCode = "N-000017", character = CatalogRef("aya", "丸山彩"), recordCount = 7),
+    )
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            PartnerDirectoryHeader(
+                total = partners.size,
+                visible = partners.size,
+                query = "",
+                visibility = PartnerVisibilityFilter.All,
+                onQueryChange = {},
+                onVisibilityChange = {},
+                onCreate = {},
+            )
+        }
+        items(partners, key = PartnerItem::id) { partner ->
+            PartnerDirectoryCard(partner, onOpen = {}, image = { ScreenshotMedia("伙伴封面") })
         }
     }
 }
