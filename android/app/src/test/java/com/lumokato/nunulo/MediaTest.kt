@@ -68,6 +68,7 @@ class MediaTest {
     fun pendingUploadFieldsPreserveVisibility() {
         val fields = pendingUploadFields(
             UploadDraft(
+                placeId = "place-1",
                 placeName = "人民广场",
                 latitude = "39.901568",
                 longitude = "116.422600",
@@ -81,6 +82,7 @@ class MediaTest {
         assertEquals("public", fields["visibility"])
         assertEquals("true", fields["world_visible"])
         assertEquals("true", fields["public_showcase"])
+        assertEquals("place-1", fields["place_id"])
         assertEquals("人民广场", fields["place_name"])
         assertEquals("regional", fields["location_privacy"])
         assertTrue("tags" !in fields)
@@ -122,6 +124,7 @@ class MediaTest {
                     DraftPhotoItem(key = "interrupted", status = "uploading", checksum = "sha-interrupted", progress = 63, captureSource = "camera"),
                     DraftPhotoItem(key = "failed", status = "error", checksum = "sha-failed", error = "网络已断开", captureSource = "gallery"),
                 ),
+                placeId = "place-stadium",
                 placeName = "北京工人体育场",
                 latitude = "39.930500",
                 longitude = "116.446900",
@@ -167,6 +170,7 @@ class MediaTest {
         assertEquals("error", restored.draft.photos[2].status)
         assertEquals("网络已断开", restored.draft.photos[2].error)
         assertEquals("record-being-edited", restored.draft.editingId)
+        assertEquals("place-stadium", restored.draft.placeId)
         assertEquals("北京工人体育场", restored.draft.placeName)
         assertEquals("39.930500", restored.draft.latitude)
         assertEquals("116.446900", restored.draft.longitude)

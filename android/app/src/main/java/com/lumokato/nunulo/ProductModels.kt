@@ -231,6 +231,24 @@ internal data class PlaceItem(
     val privacyLevel: String = "exact",
 )
 
+internal fun placeSelectionItems(places: List<PlaceItem>, query: String): List<PlaceItem> {
+    val needle = query.catalogSearchKey()
+    return places
+        .asSequence()
+        .distinctBy { place -> "${place.name.catalogSearchKey()}@${place.latitude},${place.longitude}" }
+        .filter { place ->
+            needle.isBlank() || sequenceOf(
+                place.name,
+                place.countryCode.orEmpty(),
+                place.province.orEmpty(),
+                place.city.orEmpty(),
+                place.district.orEmpty(),
+                place.address.orEmpty(),
+            ).any { it.catalogSearchKey().contains(needle) }
+        }
+        .toList()
+}
+
 internal data class EventSeriesItem(
     val id: String,
     val canonicalName: String,
@@ -502,6 +520,7 @@ internal data class DraftPhotoItem(
 internal data class UploadDraft(
     val editingId: String? = null,
     val photos: List<DraftPhotoItem> = emptyList(),
+    val placeId: String? = null,
     val placeName: String = "",
     val latitude: String = "",
     val longitude: String = "",
@@ -689,6 +708,7 @@ internal fun parseCheckin(json: JSONObject): CheckinItem {
 internal fun draftFromCheckin(record: CheckinItem): UploadDraft = UploadDraft(
     editingId = record.id,
     photos = record.photos.map { photo -> DraftPhotoItem(key = photo.id, photo = photo, status = "ready") },
+    placeId = record.placeId,
     placeName = record.placeName,
     latitude = record.latitude?.toString().orEmpty(),
     longitude = record.longitude?.toString().orEmpty(),
@@ -722,6 +742,7 @@ internal fun checkinPayload(draft: UploadDraft, requestId: String?): JSONObject 
         .put("visibility", draft.visibility)
         .put("world_visible", draft.worldVisible)
         .put("public_showcase", draft.publicShowcase)
+        .put("place_id", draft.placeId)
         .put("place_name", draft.placeName.trim())
         .put("latitude", latitude)
         .put("longitude", longitude)

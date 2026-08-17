@@ -145,10 +145,51 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
         }
         if (step == CaptureStep.Relations) item {
             SectionCard("地点", "优先照片 GNSS；没有时使用手机 GPS；仍可地图补点或无地点发布。") {
-                OutlinedTextField(draft.placeName, { controller.updateDraft(draft.copy(placeName = it)) }, label = { Text("地点名称（选填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                CapturePlaceSelection(
+                    places = controller.places,
+                    selectedPlaceId = draft.placeId,
+                    latitude = draft.latitude.toDoubleOrNull(),
+                    longitude = draft.longitude.toDoubleOrNull(),
+                    creating = controller.placeCreating,
+                    onSelect = { place ->
+                        controller.updateDraft(
+                            draft.copy(
+                                placeId = place.id,
+                                placeName = place.name,
+                                latitude = place.latitude.toString(),
+                                longitude = place.longitude.toString(),
+                                locationSource = "place_search",
+                                locationProvider = null,
+                                locationCapturedAtMillis = null,
+                                locationAccuracyMeters = null,
+                                locationPrivacy = place.privacyLevel,
+                            )
+                        )
+                    },
+                    onClearSelection = { controller.updateDraft(draft.copy(placeId = null, locationSource = "manual")) },
+                    onCreate = { name ->
+                        val latitude = draft.latitude.toDoubleOrNull()
+                        val longitude = draft.longitude.toDoubleOrNull()
+                        if (latitude != null && longitude != null) {
+                            controller.createPlace(name, latitude, longitude) { saved ->
+                                controller.updateDraft(
+                                    controller.draft.copy(
+                                        placeId = saved.id,
+                                        placeName = saved.name,
+                                        latitude = saved.latitude.toString(),
+                                        longitude = saved.longitude.toString(),
+                                        locationSource = "place_search",
+                                        locationPrivacy = saved.privacyLevel,
+                                    )
+                                )
+                            }
+                        }
+                    },
+                )
+                OutlinedTextField(draft.placeName, { controller.updateDraft(draft.copy(placeId = null, placeName = it, locationSource = "manual")) }, label = { Text("地点名称（选填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(draft.latitude, { controller.updateDraft(draft.copy(latitude = it, locationSource = "manual")) }, label = { Text("纬度") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(draft.longitude, { controller.updateDraft(draft.copy(longitude = it, locationSource = "manual")) }, label = { Text("经度") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(draft.latitude, { controller.updateDraft(draft.copy(placeId = null, latitude = it, locationSource = "manual")) }, label = { Text("纬度") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(draft.longitude, { controller.updateDraft(draft.copy(placeId = null, longitude = it, locationSource = "manual")) }, label = { Text("经度") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 Text("来源：${locationSourceLabel(draft.locationSource)}", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
                 LocationChoiceState(
@@ -156,13 +197,13 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
                     mapOpen = mapOpen,
                     onDeviceLocation = { controller.requestLocation(LocationPurpose.Draft) },
                     onToggleMap = { mapOpen = !mapOpen },
-                    onClear = { controller.updateDraft(draft.copy(latitude = "", longitude = "", locationSource = "none", placeName = "")) },
+                    onClear = { controller.updateDraft(draft.copy(placeId = null, latitude = "", longitude = "", locationSource = "none", placeName = "")) },
                 )
                 if (mapOpen) {
                     DraftLocationMap(
                         latitude = draft.latitude.toDoubleOrNull(),
                         longitude = draft.longitude.toDoubleOrNull(),
-                        onSelect = { point -> controller.updateDraft(draft.copy(latitude = point.latitude.toString(), longitude = point.longitude.toString(), locationSource = "map_picker")) },
+                        onSelect = { point -> controller.updateDraft(draft.copy(placeId = null, latitude = point.latitude.toString(), longitude = point.longitude.toString(), locationSource = "map_picker")) },
                     )
                 }
                 Text("位置精度", fontWeight = FontWeight.Bold)
@@ -481,6 +522,62 @@ internal fun CapturePartnerSelection(
     }
     if (selected.isNotEmpty()) {
         Text("移除伙伴不会自动删除已经带入的作品与角色，仍可在下方类别中调整。", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+internal fun CapturePlaceSelection(
+    places: List<PlaceItem>,
+    selectedPlaceId: String?,
+    latitude: Double?,
+    longitude: Double?,
+    creating: Boolean,
+    onSelect: (PlaceItem) -> Unit,
+    onClearSelection: () -> Unit,
+    onCreate: (String) -> Unit,
+    initialQuery: String = "",
+) {
+    var query by rememberSaveable("capture-place-query") { mutableStateOf(initialQuery) }
+    val matches = remember(places, query, selectedPlaceId) {
+        placeSelectionItems(places, query).sortedBy { it.id != selectedPlaceId }
+    }
+    Text("复用我的地点", fontWeight = FontWeight.Bold)
+    OutlinedTextField(
+        value = query,
+        onValueChange = { query = it },
+        label = { Text("搜索或保存地点") },
+        placeholder = { Text("名称、城市、区域或地址") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    if (selectedPlaceId != null) {
+        val selected = places.firstOrNull { it.id == selectedPlaceId }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("正在复用：${selected?.name ?: "已选地点"}", color = NunuloColors.MapBlue, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = onClearSelection) { Text("改为本次地点") }
+        }
+    }
+    if (matches.isNotEmpty()) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(matches, key = PlaceItem::id) { place ->
+                FilterChip(
+                    selected = place.id == selectedPlaceId,
+                    onClick = { onSelect(place) },
+                    label = { Text(place.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp)) },
+                )
+            }
+        }
+    } else if (query.isNotBlank()) {
+        Text("我的地点中没有“${query.trim()}”", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    } else if (places.isEmpty()) {
+        Text("还没有保存过地点；取得坐标后可在这里建立第一个。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+    }
+    if (query.isNotBlank() && matches.isEmpty()) {
+        TextButton(
+            enabled = latitude != null && longitude != null && !creating,
+            onClick = { onCreate(query.trim()) },
+        ) { Text(if (creating) "保存中" else "把当前坐标保存为“${query.trim()}”") }
+        if (latitude == null || longitude == null) Text("先使用照片、设备定位或地图取得坐标，再保存地点。", color = NunuloColors.Muted, style = MaterialTheme.typography.labelSmall)
     }
 }
 

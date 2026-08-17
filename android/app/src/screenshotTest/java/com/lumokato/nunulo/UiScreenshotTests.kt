@@ -1096,6 +1096,56 @@ fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
 }
 
 @PreviewTest
+@Preview(name = "capture_place_selection_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CapturePlaceSelectionScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    val places = listOf(
+        PlaceItem("place-stadium", "北京工人体育场北门", city = "北京市", district = "朝阳区", latitude = 39.9305, longitude = 116.4469, address = "工人体育场北路"),
+        PlaceItem("place-dome", "东京巨蛋", countryCode = "JP", city = "东京", latitude = 35.7056, longitude = 139.7519),
+    )
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("地点", "复用已保存地点时，多条记录会指向同一个正式地点。") {
+                CapturePlaceSelection(
+                    places = places,
+                    selectedPlaceId = "place-stadium",
+                    latitude = 39.9305,
+                    longitude = 116.4469,
+                    creating = false,
+                    onSelect = {},
+                    onClearSelection = {},
+                    onCreate = {},
+                )
+                Text("39.93050, 116.44690 · 我的地点", color = NunuloColors.MapBlue)
+            }
+        }
+    }
+}
+
+@PreviewTest
+@Preview(name = "capture_place_create_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CapturePlaceCreateScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("保存新地点", "搜索无结果时，可把照片、设备定位或地图取得的当前坐标保存到我的地点。") {
+                CapturePlaceSelection(
+                    places = emptyList(),
+                    selectedPlaceId = null,
+                    latitude = 39.9305,
+                    longitude = 116.4469,
+                    creating = false,
+                    onSelect = {},
+                    onClearSelection = {},
+                    onCreate = {},
+                    initialQuery = "北京工人体育场北门",
+                )
+            }
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "footprint_content_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun FootprintContentScreenshot() = ScreenshotFrame(AppTab.Profile) {

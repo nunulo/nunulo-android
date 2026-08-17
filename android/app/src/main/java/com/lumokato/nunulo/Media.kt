@@ -250,6 +250,7 @@ internal fun encodePendingUpload(
         .put("attempted", pending.attempted)
         .put("editing_id", draft.editingId)
         .put("photos", photos)
+        .put("place_id", draft.placeId)
         .put("place_name", draft.placeName)
         .put("latitude", draft.latitude)
         .put("longitude", draft.longitude)
@@ -273,6 +274,7 @@ internal fun encodePendingUpload(
 }
 
 internal fun pendingUploadFields(draft: UploadDraft): Map<String, String> = linkedMapOf(
+    "place_id" to draft.placeId.orEmpty(),
     "place_name" to draft.placeName,
     "latitude" to draft.latitude,
     "longitude" to draft.longitude,
@@ -320,6 +322,7 @@ internal fun decodePendingUpload(
             draft = UploadDraft(
                 editingId = payload.optionalString("editing_id"),
                 photos = photos,
+                placeId = payload.optionalString("place_id"),
                 placeName = payload.optString("place_name"),
                 latitude = payload.optString("latitude"),
                 longitude = payload.optString("longitude"),

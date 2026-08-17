@@ -494,8 +494,9 @@ internal class NunuloController(
         }
         val point = MapPoint(fix.latitude, fix.longitude)
         currentLocation = point
-        if (purpose == LocationPurpose.Draft && draft.locationSource !in setOf("photo_exif", "map", "map_picker", "manual")) {
+        if (purpose == LocationPurpose.Draft && draft.locationSource !in setOf("photo_exif", "map", "map_picker", "manual", "place_search")) {
             draft = draft.copy(
+                placeId = null,
                 latitude = "%.6f".format(point.latitude),
                 longitude = "%.6f".format(point.longitude),
                 locationSource = if (fix.isLastKnown) "device_last_known" else "device_current",
@@ -572,8 +573,9 @@ internal class NunuloController(
             }
             draft = draft.updatePhoto(key) { it.copy(photo = uploaded, status = "ready", progress = 100, error = null) }
             if (uploaded.exifTakenAt != null && draft.takenAt.isBlank()) draft = draft.copy(takenAt = uploaded.exifTakenAt)
-            if (uploaded.exifLatitude != null && uploaded.exifLongitude != null && draft.locationSource !in setOf("map", "map_picker", "manual")) {
+            if (uploaded.exifLatitude != null && uploaded.exifLongitude != null && draft.locationSource !in setOf("map", "map_picker", "manual", "place_search")) {
                 draft = draft.copy(
+                    placeId = null,
                     latitude = uploaded.exifLatitude.toString(),
                     longitude = uploaded.exifLongitude.toString(),
                     locationSource = "photo_exif",
@@ -1365,7 +1367,7 @@ internal class NunuloController(
             try {
                 val place = authed { token -> api.createPlace(apiBase, token, name, latitude, longitude) }
                 places = listOf(place) + places
-                message = "活动地点已保存"
+                message = "地点已保存"
                 onSuccess(place)
             } catch (error: Exception) {
                 message = error.message ?: "地点保存失败"

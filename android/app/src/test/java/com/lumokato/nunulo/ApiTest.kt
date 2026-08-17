@@ -358,6 +358,7 @@ class ApiTest {
                     DraftPhotoItem(photo = PhotoItem("photo-2"), status = "ready"),
                     DraftPhotoItem(photo = PhotoItem("photo-1"), status = "ready"),
                 ),
+                placeId = "place-tokyo-dome",
                 placeName = "东京巨蛋",
                 latitude = "35.7056",
                 longitude = "139.7519",
@@ -380,6 +381,7 @@ class ApiTest {
 
         assertEquals(listOf("photo-2", "photo-1"), payload.getJSONArray("photo_ids").let { array -> List(array.length()) { array.getString(it) } })
         assertEquals("request-1", payload.getString("client_request_id"))
+        assertEquals("place-tokyo-dome", payload.getString("place_id"))
         assertEquals("photo_exif", payload.getString("location_source"))
         assertEquals("exif", payload.getString("location_provider"))
         assertEquals("2026-08-13T16:53:20Z", payload.getString("location_captured_at"))
