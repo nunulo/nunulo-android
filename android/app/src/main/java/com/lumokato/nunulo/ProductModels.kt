@@ -249,6 +249,42 @@ internal fun placeSelectionItems(places: List<PlaceItem>, query: String): List<P
         .toList()
 }
 
+internal data class CatalogCandidateSelection(
+    val draft: UploadDraft,
+    val groupId: String,
+)
+
+internal fun selectCatalogCandidate(
+    draft: UploadDraft,
+    currentGroupId: String,
+    entityType: String,
+    entity: CatalogEntityItem,
+): CatalogCandidateSelection = when (entityType) {
+    "item_type" -> CatalogCandidateSelection(
+        draft.copy(itemTypeIds = (draft.itemTypeIds + entity.id).distinct()),
+        currentGroupId,
+    )
+    "work" -> CatalogCandidateSelection(
+        draft.copy(workIds = (draft.workIds + entity.id).distinct()),
+        currentGroupId,
+    )
+    "group" -> CatalogCandidateSelection(
+        draft.copy(workIds = (draft.workIds + listOfNotNull(entity.work?.id)).distinct()),
+        entity.id,
+    )
+    "character" -> CatalogCandidateSelection(
+        draft.copy(
+            workIds = (draft.workIds + listOfNotNull(entity.work?.id)).distinct(),
+            characterIds = (draft.characterIds + entity.id).distinct(),
+        ),
+        entity.group?.id ?: currentGroupId,
+    )
+    else -> CatalogCandidateSelection(draft, currentGroupId)
+}
+
+internal fun catalogSelectionLabel(entity: CatalogEntityItem): String =
+    if (entity.status == "active") entity.canonicalName else "${entity.canonicalName} · 待审核"
+
 internal data class EventSeriesItem(
     val id: String,
     val canonicalName: String,

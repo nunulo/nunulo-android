@@ -473,7 +473,7 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                             Text("物件类型（必选）", fontWeight = FontWeight.Bold)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(controller.discovery.catalog["item_type"].orEmpty(), key = { it.id }) { entity ->
-                                    FilterChip(selected = itemTypeId == entity.id, onClick = { itemTypeId = entity.id }, label = { Text(entity.canonicalName) })
+                                    FilterChip(selected = itemTypeId == entity.id, onClick = { itemTypeId = entity.id }, label = { Text(catalogSelectionLabel(entity), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp)) })
                                 }
                             }
                             if (itemTypeId.isBlank()) Text("请选择一个物件类型后才能保存。", color = NunuloColors.Danger, style = MaterialTheme.typography.bodySmall)
@@ -486,7 +486,7 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 item { FilterChip(selected = workId.isBlank(), onClick = { workId = ""; groupId = ""; characterId = "" }, label = { Text("其他 / 无作品") }) }
                                 items(works, key = { it.id }) { entity ->
-                                    FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; groupId = ""; characterId = "" }, label = { Text(entity.canonicalName) })
+                                    FilterChip(selected = workId == entity.id, onClick = { workId = entity.id; groupId = ""; characterId = "" }, label = { Text(catalogSelectionLabel(entity), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp)) })
                                 }
                             }
                             if (workQuery.isNotBlank() && works.isEmpty()) {
@@ -497,7 +497,7 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 item { FilterChip(selected = groupId.isBlank(), onClick = { groupId = "" }, label = { Text("全部组合") }) }
                                 items(groups, key = { it.id }) { entity ->
-                                    FilterChip(selected = groupId == entity.id, onClick = { groupId = entity.id; characterId = "" }, label = { Text(entity.canonicalName) })
+                                    FilterChip(selected = groupId == entity.id, onClick = { groupId = entity.id; characterId = "" }, label = { Text(catalogSelectionLabel(entity), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp)) })
                                 }
                             }
 
@@ -513,7 +513,7 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
                                             entity.work?.id?.let { workId = it }
                                             entity.group?.id?.let { groupId = it }
                                         },
-                                        label = { Text(entity.canonicalName) },
+                                        label = { Text(catalogSelectionLabel(entity), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp)) },
                                     )
                                 }
                             }
@@ -552,13 +552,35 @@ private fun PartnerEditorDialog(controller: NunuloController, initial: PartnerIt
             type = type,
             initialName = if (type == "work") workQuery else characterQuery,
             workId = workId.takeIf(String::isNotBlank),
+            onCreated = { created ->
+                when (type) {
+                    "work" -> {
+                        workId = created.id
+                        groupId = ""
+                        characterId = ""
+                    }
+                    "character" -> {
+                        characterId = created.id
+                        created.work?.id?.let { workId = it }
+                        groupId = created.group?.id.orEmpty()
+                    }
+                }
+                candidateType = null
+            },
             onDismiss = { candidateType = null },
         )
     }
 }
 
 @Composable
-private fun PartnerCatalogCandidateDialog(controller: NunuloController, type: String, initialName: String, workId: String?, onDismiss: () -> Unit) {
+private fun PartnerCatalogCandidateDialog(
+    controller: NunuloController,
+    type: String,
+    initialName: String,
+    workId: String?,
+    onCreated: (CatalogEntityItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
     var name by rememberSaveable(type, initialName) { mutableStateOf(initialName) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -572,7 +594,7 @@ private fun PartnerCatalogCandidateDialog(controller: NunuloController, type: St
         confirmButton = {
             TextButton(
                 enabled = name.isNotBlank() && (type != "character" || workId != null) && !controller.catalogCandidateCreating,
-                onClick = { controller.createCatalogCandidate(type, name, workId, onSuccess = onDismiss) },
+                onClick = { controller.createCatalogCandidate(type, name, workId, onSuccess = onCreated) },
             ) { Text(if (controller.catalogCandidateCreating) "提交中" else "提交") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },

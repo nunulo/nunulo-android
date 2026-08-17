@@ -1253,7 +1253,7 @@ internal class NunuloController(
         selectPartner(partner)
     }
 
-    fun createCatalogCandidate(type: String, name: String, workId: String?, onSuccess: () -> Unit = {}) {
+    fun createCatalogCandidate(type: String, name: String, workId: String?, onSuccess: (CatalogEntityItem) -> Unit = {}) {
         if (catalogCandidateCreating) return
         catalogCandidateCreating = true
         coroutineScope.launch {
@@ -1264,8 +1264,12 @@ internal class NunuloController(
                         this[type] = (get(type).orEmpty() + created).distinctBy(CatalogEntityItem::id)
                     }
                 )
-                message = "${created.canonicalName} 已作为候选提交"
-                onSuccess()
+                message = if (created.status == "active") {
+                    "${created.canonicalName} 已在正式目录中"
+                } else {
+                    "${created.canonicalName} 已作为候选提交"
+                }
+                onSuccess(created)
             } catch (error: Exception) {
                 message = error.message ?: "候选提交失败"
             } finally {

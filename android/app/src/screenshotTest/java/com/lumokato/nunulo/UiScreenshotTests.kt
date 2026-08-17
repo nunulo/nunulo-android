@@ -82,6 +82,33 @@ fun CatalogNoResultScreenshot() = ScreenshotFrame(AppTab.Partners) {
 }
 
 @PreviewTest
+@Preview(name = "capture_pending_candidate_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun CapturePendingCandidateScreenshot() = ScreenshotFrame(AppTab.Capture) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            SectionCard("作品 / IP", "刚提交的候选已经选入当前记录，审核期间不会打断登记。") {
+                CatalogSelection(
+                    title = "作品 / IP",
+                    items = listOf(
+                        CatalogEntityItem(
+                            id = "work-pending",
+                            entityType = "work",
+                            canonicalName = "BanG Dream! 新作候选",
+                            status = "pending",
+                        )
+                    ),
+                    selected = listOf("work-pending"),
+                    onToggle = {},
+                    initialQuery = "BanG Dream",
+                )
+                Text("已选 1 个作品候选，可继续选择角色、地点与活动。", color = NunuloColors.MapBlue)
+            }
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "feed_offline_360x800", widthDp = 360, heightDp = 800, showBackground = true)
 @Composable
 fun FeedOfflineScreenshot() = ScreenshotFrame(AppTab.Feed) {

@@ -316,7 +316,19 @@ internal fun CaptureScreen(controller: NunuloController, onPick: () -> Unit, onC
             }
         }
     }
-    candidateRequest?.let { request -> CandidateDialog(controller, request, onDismiss = { candidateRequest = null }) }
+    candidateRequest?.let { request ->
+        CandidateDialog(
+            controller = controller,
+            request = request,
+            onCreated = { created ->
+                val selection = selectCatalogCandidate(controller.draft, groupId, request.type, created)
+                groupId = selection.groupId
+                controller.updateDraft(selection.draft)
+                candidateRequest = null
+            },
+            onDismiss = { candidateRequest = null },
+        )
+    }
     if (clearDraftConfirm) {
         ConfirmActionDialog(
             title = "清除这条草稿？",
@@ -474,7 +486,13 @@ internal fun CatalogSelection(
         }
     }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(matches, key = { it.id }) { item -> FilterChip(selected = item.id in selected, onClick = { onToggle(item.id) }, label = { Text(item.canonicalName) }) }
+        items(matches, key = { it.id }) { item ->
+            FilterChip(
+                selected = item.id in selected,
+                onClick = { onToggle(item.id) },
+                label = { Text(catalogSelectionLabel(item), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 210.dp)) },
+            )
+        }
     }
 }
 
@@ -648,18 +666,30 @@ internal fun CaptureEventSelection(
 }
 
 @Composable
-private fun CandidateDialog(controller: NunuloController, request: CatalogCandidateRequest, onDismiss: () -> Unit) {
-    var type by rememberSaveable(request.type) { mutableStateOf(request.type) }
+private fun CandidateDialog(
+    controller: NunuloController,
+    request: CatalogCandidateRequest,
+    onCreated: (CatalogEntityItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val type = request.type
     var name by rememberSaveable(request.name) { mutableStateOf(request.name) }
     var workId by rememberSaveable(request.workId) { mutableStateOf(request.workId.orEmpty()) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("提交类别候选") },
+        title = {
+            Text(
+                when (type) {
+                    "item_type" -> "提交物件类型候选"
+                    "work" -> "提交作品候选"
+                    "group" -> "提交组合候选"
+                    else -> "提交角色候选"
+                }
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(listOf("item_type" to "物件类型", "work" to "作品", "group" to "乐队 / 组合", "character" to "角色")) { option -> FilterChip(selected = type == option.first, onClick = { type = option.first }, label = { Text(option.second) }) }
-                }
+                Text("提交成功后会直接选入当前记录；审核通过前会标记为待审核。", color = NunuloColors.Muted)
                 OutlinedTextField(name, { name = it }, label = { Text("候选名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (type == "group" || type == "character") {
                     Text(if (type == "group") "组合必须选择所属作品" else "角色必须选择所属作品", color = NunuloColors.Muted)
@@ -672,7 +702,7 @@ private fun CandidateDialog(controller: NunuloController, request: CatalogCandid
         confirmButton = {
             TextButton(
                 enabled = name.isNotBlank() && (type !in setOf("group", "character") || workId.isNotBlank()) && !controller.catalogCandidateCreating,
-                onClick = { controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank), onSuccess = onDismiss) },
+                onClick = { controller.createCatalogCandidate(type, name, workId.takeIf(String::isNotBlank), onSuccess = onCreated) },
             ) { Text(if (controller.catalogCandidateCreating) "提交中" else "提交") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
