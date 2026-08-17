@@ -76,6 +76,13 @@ internal fun FeedScreen(controller: NunuloController) {
                             loading = controller.collectionLoading,
                             onBack = controller::loadFeed,
                         )
+                    } ?: target.partner?.let { partner ->
+                        PartnerCollectionHeader(
+                            partner = partner,
+                            records = controller.feedItems,
+                            loading = controller.collectionLoading,
+                            onBack = { controller.returnToPartner(partner) },
+                        )
                     } ?: SectionCard(target.title, target.subtitle) {
                             TextButton(onClick = { controller.loadFeed() }) { Text("返回动态") }
                         }
@@ -153,6 +160,48 @@ internal fun FeedScreen(controller: NunuloController) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+internal fun PartnerCollectionHeader(
+    partner: PartnerItem,
+    records: List<CheckinItem>,
+    loading: Boolean = false,
+    onBack: () -> Unit,
+) {
+    val stats = partnerCollectionStats(partner.id, records)
+    Surface(color = NunuloColors.Soft, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                RecordStamp("伴", NunuloColors.MapBlue)
+                Column(Modifier.weight(1f)) {
+                    Text(partner.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(partner.publicCode, color = NunuloColors.MapBlue, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+                EventHeaderTag(visibilityLabel(partner.visibility))
+            }
+            val identity = listOfNotNull(partner.itemType?.name, partner.work?.name, partner.character?.name)
+            if (identity.isNotEmpty()) {
+                Text(identity.joinToString(" · "), color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EventHeaderTag("${partner.recordCount} 条记录")
+                EventHeaderTag(if (loading && records.isEmpty()) "正在读取" else "当前可见 ${records.size} 条")
+            }
+            Surface(color = NunuloColors.Paper, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("这位伙伴走过的地方", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (loading && records.isEmpty()) "正在整理成员、相遇伙伴、地点与活动…" else "${stats.memberCount} 位成员 · 见过 ${stats.meetingPartnerCount} 位伙伴 · ${stats.placeCount} 个地点 · ${stats.eventCount} 个活动",
+                        color = NunuloColors.Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Text("这里只显示你当前有权查看的关联记录；私人出镜关系不会因此公开。", color = NunuloColors.Muted, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("返回伙伴主页") }
         }
     }
 }

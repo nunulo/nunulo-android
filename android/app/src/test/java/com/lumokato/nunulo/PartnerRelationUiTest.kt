@@ -58,6 +58,57 @@ class PartnerRelationUiTest {
         assertEquals(8, removed.likeCount)
     }
 
+    @Test
+    fun partnerCollectionStatsUseDistinctVisibleRelationships() {
+        val target = partner(ownerUserId = 42)
+        val meeting = partner(id = "partner-2", ownerUserId = 9)
+        val event = EventItem(
+            id = "event-1",
+            name = "MyGO!!!!! LIVE",
+            eventType = "offline_live",
+            visibility = "public",
+            status = "active",
+            official = true,
+            place = null,
+            series = null,
+            startsAt = null,
+            endsAt = null,
+            description = "",
+            recordCount = 2,
+            canEdit = false,
+        )
+        val records = listOf(
+            record("record-1", 7, "place-1", listOf(target, meeting), listOf(event)),
+            record("record-2", 11, "place-2", listOf(target, meeting), listOf(event)),
+        )
+
+        assertEquals(
+            PartnerCollectionStats(memberCount = 2, meetingPartnerCount = 1, placeCount = 2, eventCount = 1),
+            partnerCollectionStats(target.id, records),
+        )
+    }
+
+    private fun record(
+        id: String,
+        userId: Int,
+        placeId: String,
+        partners: List<PartnerItem>,
+        events: List<EventItem>,
+    ) = CheckinItem(
+        id = id,
+        userId = userId,
+        placeId = placeId,
+        placeName = "演出场地",
+        note = "",
+        latitude = 39.93,
+        longitude = 116.44,
+        createdAt = null,
+        takenAt = null,
+        source = "android_capture",
+        partners = partners,
+        events = events,
+    )
+
     private fun partner(
         id: String = "partner-1",
         ownerUserId: Int,

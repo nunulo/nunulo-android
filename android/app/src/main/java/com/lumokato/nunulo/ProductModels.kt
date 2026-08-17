@@ -354,6 +354,26 @@ internal fun regionCollectionPlaces(records: List<CheckinItem>): List<RegionPlac
     }
     .sortedWith(compareByDescending<RegionPlaceSummary>(RegionPlaceSummary::recordCount).thenBy(RegionPlaceSummary::name))
 
+internal data class PartnerCollectionStats(
+    val memberCount: Int,
+    val meetingPartnerCount: Int,
+    val placeCount: Int,
+    val eventCount: Int,
+)
+
+internal fun partnerCollectionStats(partnerId: String, records: List<CheckinItem>): PartnerCollectionStats = PartnerCollectionStats(
+    memberCount = records.map(CheckinItem::userId).filter { it > 0 }.distinct().size,
+    meetingPartnerCount = records.flatMap(CheckinItem::partners).filterNot { it.id == partnerId }.map(PartnerItem::id).distinct().size,
+    placeCount = records.mapNotNull { record ->
+        record.placeId?.takeIf(String::isNotBlank) ?: when {
+            record.latitude != null && record.longitude != null -> "${record.placeName}@${record.latitude},${record.longitude}"
+            record.placeName.isNotBlank() -> record.placeName.trim().lowercase()
+            else -> null
+        }
+    }.distinct().size,
+    eventCount = records.flatMap(CheckinItem::events).map(EventItem::id).distinct().size,
+)
+
 internal data class TopicItem(
     val id: String,
     val title: String,

@@ -34,6 +34,7 @@ internal data class RecordCollection(
     val album: AlbumItem? = null,
     val region: WorldRegionItem? = null,
     val topic: TopicItem? = null,
+    val partner: PartnerItem? = null,
 )
 
 internal fun catalogCollectionForEntity(entity: CatalogEntityItem): RecordCollection = RecordCollection(
@@ -1227,7 +1228,20 @@ internal class NunuloController(
     }
 
     fun openPartnerRecords(partner: PartnerItem) {
-        openCollection(RecordCollection(partner.name, partner.publicCode, mapOf("partner_id" to partner.id)))
+        openCollection(
+            RecordCollection(
+                title = partner.name,
+                subtitle = partner.publicCode,
+                filters = mapOf("partner_id" to partner.id),
+                partner = partner,
+            )
+        )
+    }
+
+    fun returnToPartner(partner: PartnerItem) {
+        loadFeed()
+        selectTab(AppTab.Partners)
+        selectPartner(partner)
     }
 
     fun createCatalogCandidate(type: String, name: String, workId: String?, onSuccess: () -> Unit = {}) {

@@ -1009,6 +1009,30 @@ fun TopicCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
 }
 
 @PreviewTest
+@Preview(name = "partner_collection_header_393x852", widthDp = 393, heightDp = 852, showBackground = true)
+@Composable
+fun PartnerCollectionHeaderScreenshot() = ScreenshotFrame(AppTab.Feed) {
+    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            PartnerCollectionHeader(
+                partner = screenshotPartner(),
+                records = listOf(
+                    screenshotRecord().copy(placeId = "place-1"),
+                    screenshotRecord().copy(
+                        id = "record-2",
+                        userId = 11,
+                        placeId = "place-2",
+                        placeName = "国家体育馆南广场",
+                        partners = listOf(screenshotPartner(), screenshotMeetingPartner()),
+                    ),
+                ),
+                onBack = {},
+            )
+        }
+    }
+}
+
+@PreviewTest
 @Preview(name = "capture_relations_393x852", widthDp = 393, heightDp = 852, showBackground = true)
 @Composable
 fun CaptureRelationsScreenshot() = ScreenshotFrame(AppTab.Capture) {
